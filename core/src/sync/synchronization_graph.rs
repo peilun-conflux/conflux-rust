@@ -1340,7 +1340,7 @@ impl SynchronizationGraph {
         let _timer = MeterTimer::time_func(SYNC_INSERT_HEADER.as_ref());
         let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG.as_ref());
         let inner = &mut *self.inner.write();
-        drop(_timer1);
+
         let hash = header.hash();
 
         if self.data_man.verified_invalid(&hash) {
@@ -1396,7 +1396,7 @@ impl SynchronizationGraph {
                 inner.not_ready_blocks_frontier.remove(&x);
             }
         }
-
+        drop(_timer1);
         debug!("insert_block_header() Block = {}, index = {}, need_to_verify = {}, bench_mode = {} insert_to_consensus = {}",
                header.hash(), me, need_to_verify, bench_mode, insert_to_consensus);
 
