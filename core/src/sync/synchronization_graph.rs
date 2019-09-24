@@ -34,6 +34,8 @@ use unexpected::{Mismatch, OutOfBounds};
 lazy_static! {
     static ref SYNC_INSERT_HEADER: Arc<dyn Meter> =
         register_meter_with_group("timer", "sync::insert_block_header");
+    static ref SYNC_INSERT_HEADER_DEBUG: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_block_header_debug");
     static ref SYNC_INSERT_BLOCK: Arc<dyn Meter> =
         register_meter_with_group("timer", "sync::insert_block");
 }
@@ -1336,7 +1338,9 @@ impl SynchronizationGraph {
     ) -> (bool, Vec<H256>)
     {
         let _timer = MeterTimer::time_func(SYNC_INSERT_HEADER.as_ref());
+        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG.as_ref());
         let inner = &mut *self.inner.write();
+        drop(_timer1);
         let hash = header.hash();
 
         if self.data_man.verified_invalid(&hash) {
