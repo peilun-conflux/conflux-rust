@@ -154,7 +154,7 @@ class RemoteSimulate(ConfluxTestFramework):
         parser.add_argument(
             "--tx-pool-size",
             dest="tx_pool_size",
-            default=1000000,
+            default=100000000,
             type=int,
         )
         parser.add_argument(
