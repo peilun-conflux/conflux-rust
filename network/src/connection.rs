@@ -309,13 +309,13 @@ impl<Socket: GenericSocket> GenericConnection<Socket> {
         // In case of last packet is all sent out.
         if self.sending_packet.is_none() {
             // give up to send low priority packet
-            if self.send_queue.is_send_queue_empty(SendQueuePriority::High)
-                && has_high_priority_packets()
-            {
-                trace!("Give up to send socket data due to low priority, token = {}", self.token);
-                WRITABLE_YIELD_SEND_RIGHT_COUNTER.mark(1);
-                return Ok(WriteStatus::LowPriority);
-            }
+//            if self.send_queue.is_send_queue_empty(SendQueuePriority::High)
+//                && has_high_priority_packets()
+//            {
+//                trace!("Give up to send socket data due to low priority, token = {}", self.token);
+//                WRITABLE_YIELD_SEND_RIGHT_COUNTER.mark(1);
+//                return Ok(WriteStatus::LowPriority);
+//            }
 
             // get packet from queue to send
             let (mut packet, priority) = match self.send_queue.pop_front() {
