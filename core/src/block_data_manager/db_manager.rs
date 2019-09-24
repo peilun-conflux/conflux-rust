@@ -15,6 +15,18 @@ use primitives::{Block, BlockHeader, SignedTransaction, TransactionAddress};
 use rlp::{Decodable, Encodable, Rlp};
 use std::{collections::HashMap, fs, path::Path, str::FromStr, sync::Arc};
 
+
+use metrics::{register_meter_with_group, Meter, MeterTimer};
+
+lazy_static! {
+    static ref SYNC_INSERT_HEADER_LOCAL_BLOCK_FROM_DB: Arc<dyn Meter> =
+    register_meter_with_group("timer", "sync::insert_header_local_block_from_db");
+    static ref SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_1: Arc<dyn Meter> =
+    register_meter_with_group("timer", "sync::insert_header_load_decodable_val_1");
+    static ref SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2: Arc<dyn Meter> =
+    register_meter_with_group("timer", "sync::insert_header_load_decodable_val_2");
+}
+
 const LOCAL_BLOCK_INFO_SUFFIX_BYTE: u8 = 1;
 const BLOCK_BODY_SUFFIX_BYTE: u8 = 2;
 const BLOCK_EXECUTION_RESULT_SUFFIX_BYTE: u8 = 3;
@@ -28,6 +40,7 @@ pub enum DBTable {
     Transactions,
     EpochNumbers,
 }
+
 
 impl FromStr for DBTable {
     type Err = ();
@@ -194,6 +207,7 @@ impl DBManager {
     pub fn local_block_info_from_db(
         &self, block_hash: &H256,
     ) -> Option<LocalBlockInfo> {
+        let _timer = MeterTimer::time_func(SYNC_INSERT_HEADER_LOCAL_BLOCK_FROM_DB.as_ref());
         self.load_decodable_val(
             DBTable::Blocks,
             &local_block_info_key(block_hash),
@@ -364,7 +378,10 @@ impl DBManager {
         &self, table: DBTable, db_key: &[u8],
     ) -> Option<V>
     where V: Decodable {
+        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_1.as_ref());
         let encoded = self.load_from_db(table, db_key)?;
+        drop(_timer1);
+        let _timer2 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2.as_ref());
         Some(Rlp::new(&encoded).as_val().expect("decode succeeds"))
     }
 
