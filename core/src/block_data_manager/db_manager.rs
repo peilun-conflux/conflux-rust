@@ -359,7 +359,11 @@ impl DBManager {
     }
 
     fn load_from_db(&self, table: DBTable, db_key: &[u8]) -> Option<Box<[u8]>> {
-        self.table_db_map.get(&table).unwrap().get(db_key).unwrap()
+        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_1.as_ref());
+        let tmp =self.table_db_map.get(&table).unwrap();
+        drop(_timer1);
+        let _timer2 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2.as_ref());
+        tmp.get(db_key).unwrap()
     }
 
     fn insert_encodable_val<V>(
@@ -378,10 +382,7 @@ impl DBManager {
         &self, table: DBTable, db_key: &[u8],
     ) -> Option<V>
     where V: Decodable {
-        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_1.as_ref());
         let encoded = self.load_from_db(table, db_key)?;
-        drop(_timer1);
-        let _timer2 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2.as_ref());
         Some(Rlp::new(&encoded).as_val().expect("decode succeeds"))
     }
 
