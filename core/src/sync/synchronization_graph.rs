@@ -34,8 +34,16 @@ use unexpected::{Mismatch, OutOfBounds};
 lazy_static! {
     static ref SYNC_INSERT_HEADER: Arc<dyn Meter> =
         register_meter_with_group("timer", "sync::insert_block_header");
-    static ref SYNC_INSERT_HEADER_DEBUG: Arc<dyn Meter> =
-        register_meter_with_group("timer", "sync::insert_block_header_debug");
+    static ref SYNC_INSERT_HEADER_DEBUG_1: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_block_header_debug_1");
+    static ref SYNC_INSERT_HEADER_DEBUG_2: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_block_header_debug_2");
+    static ref SYNC_INSERT_HEADER_DEBUG_3: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_block_header_debug_3");
+    static ref SYNC_INSERT_HEADER_DEBUG_4: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_block_header_debug_4");
+    static ref SYNC_INSERT_HEADER_DEBUG_5: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_block_header_debug_5");
     static ref SYNC_INSERT_BLOCK: Arc<dyn Meter> =
         register_meter_with_group("timer", "sync::insert_block");
 }
@@ -1338,11 +1346,11 @@ impl SynchronizationGraph {
     ) -> (bool, Vec<H256>)
     {
         let _timer = MeterTimer::time_func(SYNC_INSERT_HEADER.as_ref());
-        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG.as_ref());
+        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG_1.as_ref());
         let inner = &mut *self.inner.write();
-
+        drop(_timer1);
         let hash = header.hash();
-
+        let _timer2 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG_2.as_ref());
         if self.data_man.verified_invalid(&hash) {
             return (false, Vec::new());
         }
@@ -1355,7 +1363,8 @@ impl SynchronizationGraph {
             }
             return (true, Vec::new());
         }
-
+        drop(_timer2);
+        let _timer3 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG_3.as_ref());
         let verification_passed = if need_to_verify {
             !(self.parent_or_referees_invalid(header)
                 || self
@@ -1370,6 +1379,8 @@ impl SynchronizationGraph {
             }
             true
         };
+        drop(_timer3);
+        let _timer4 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG_4.as_ref());
 
         let header_arc = Arc::new(header.clone());
         let me = if verification_passed {
@@ -1377,7 +1388,8 @@ impl SynchronizationGraph {
         } else {
             inner.insert_invalid(header_arc.clone())
         };
-
+        drop(_timer4);
+        let _timer5 = MeterTimer::time_func(SYNC_INSERT_HEADER_DEBUG_5.as_ref());
         if inner.arena[me].graph_status != BLOCK_GRAPH_READY {
             inner.not_ready_blocks_count += 1;
             if inner.arena[me].parent == NULL
@@ -1396,7 +1408,7 @@ impl SynchronizationGraph {
                 inner.not_ready_blocks_frontier.remove(&x);
             }
         }
-        drop(_timer1);
+        drop(_timer5);
         debug!("insert_block_header() Block = {}, index = {}, need_to_verify = {}, bench_mode = {} insert_to_consensus = {}",
                header.hash(), me, need_to_verify, bench_mode, insert_to_consensus);
 
