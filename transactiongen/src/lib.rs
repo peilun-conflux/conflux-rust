@@ -238,12 +238,12 @@ impl TransactionGenerator {
             // Generate nonce for the transaction
             let sender_nonce = nonce_map.get_mut(&sender_address).unwrap();
 
-            let (nonce, balance) =
-                txgen.txpool.get_state_account_info(&sender_address);
-            if nonce.cmp(sender_nonce) != Ordering::Equal {
-                *sender_nonce = nonce.clone();
-                balance_map.insert(sender_address.clone(), balance.clone());
-            }
+//            let (nonce, balance) =
+//                txgen.txpool.get_state_account_info(&sender_address);
+//            if nonce.cmp(sender_nonce) != Ordering::Equal {
+//                *sender_nonce = nonce.clone();
+//                balance_map.insert(sender_address.clone(), balance.clone());
+//            }
             trace!(
                 "receiver={:?} value={:?} nonce={:?}",
                 receiver_address,
