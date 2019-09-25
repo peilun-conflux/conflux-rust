@@ -15,7 +15,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 2000;
+const FURTHEST_FUTURE_TRANSACTION_NONCE_OFFSET: u32 = 200000;
 // By default, the capacity of tx pool is 500K, so the maximum TPS is
 // 500K / 100 = 5K
 const TIME_WINDOW: u64 = 100;

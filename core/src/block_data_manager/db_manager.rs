@@ -15,6 +15,10 @@ use primitives::{Block, BlockHeader, SignedTransaction, TransactionAddress};
 use rlp::{Decodable, Encodable, Rlp};
 use std::{collections::HashMap, fs, path::Path, str::FromStr, sync::Arc};
 
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
+use flate2::read::GzDecoder;
+
 
 use metrics::{register_meter_with_group, Meter, MeterTimer};
 
@@ -41,7 +45,6 @@ pub enum DBTable {
     EpochNumbers,
 }
 
-
 impl FromStr for DBTable {
     type Err = ();
 
@@ -55,6 +58,7 @@ impl FromStr for DBTable {
         }
     }
 }
+
 
 fn rocks_db_col(table: DBTable) -> Option<u32> {
     match table {
@@ -347,6 +351,8 @@ impl DBManager {
     /// The functions below are private utils used by the DBManager to access
     /// database
     fn insert_to_db(&self, table: DBTable, db_key: &[u8], value: Vec<u8>) {
+//        let mut e = GzEncoder::new(value, Compression::default());
+//        let compressed_value = e.finish();
         self.table_db_map
             .get(&table)
             .unwrap()
@@ -364,6 +370,8 @@ impl DBManager {
         drop(_timer1);
         let _timer2 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2.as_ref());
         tmp.get(db_key).unwrap()
+//        let mut d = GzDecoder::new(value.as_ref());
+//        d.read()
     }
 
     fn insert_encodable_val<V>(
