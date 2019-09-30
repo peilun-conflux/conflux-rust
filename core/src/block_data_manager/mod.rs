@@ -45,12 +45,12 @@ use toml::Value;
 pub const NULLU64: u64 = !0;
 use metrics::{register_meter_with_group, Meter, MeterTimer};
 lazy_static! {
-static ref SYNC_INSERT_HEADER_VALID_BLOCK_1: Arc<dyn Meter> =
-register_meter_with_group("timer", "sync::insert_header_valid_1");
-static ref SYNC_INSERT_HEADER_VALID_BLOCK_2: Arc<dyn Meter> =
-register_meter_with_group("timer", "sync::insert_header_valid_2");
-static ref SYNC_INSERT_HEADER_VALID_BLOCK_3: Arc<dyn Meter> =
-register_meter_with_group("timer", "sync::insert_header_valid_3");
+    static ref SYNC_INSERT_HEADER_VALID_BLOCK_1: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_header_valid_1");
+    static ref SYNC_INSERT_HEADER_VALID_BLOCK_2: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_header_valid_2");
+    static ref SYNC_INSERT_HEADER_VALID_BLOCK_3: Arc<dyn Meter> =
+        register_meter_with_group("timer", "sync::insert_header_valid_3");
 }
 pub struct BlockDataManager {
     block_headers: RwLock<HashMap<H256, Arc<BlockHeader>>>,
@@ -754,17 +754,22 @@ impl BlockDataManager {
 
     /// Check if a block is already marked as invalid.
     pub fn verified_invalid(&self, block_hash: &H256) -> bool {
-        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_VALID_BLOCK_1.as_ref());
+        let _timer1 =
+            MeterTimer::time_func(SYNC_INSERT_HEADER_VALID_BLOCK_1.as_ref());
         let invalid_block_set = self.invalid_block_set.upgradable_read();
         drop(_timer1);
         if invalid_block_set.contains(block_hash) {
             return true;
         } else {
-            let _timer2 = MeterTimer::time_func(SYNC_INSERT_HEADER_VALID_BLOCK_2.as_ref());
+            let _timer2 = MeterTimer::time_func(
+                SYNC_INSERT_HEADER_VALID_BLOCK_2.as_ref(),
+            );
             if let Some(block_info) =
                 self.db_manager.local_block_info_from_db(block_hash)
             {
-                let _timer3 = MeterTimer::time_func(SYNC_INSERT_HEADER_VALID_BLOCK_3.as_ref());
+                let _timer3 = MeterTimer::time_func(
+                    SYNC_INSERT_HEADER_VALID_BLOCK_3.as_ref(),
+                );
                 match block_info.get_status() {
                     BlockStatus::Invalid => {
                         RwLockUpgradableReadGuard::upgrade(invalid_block_set)
@@ -931,8 +936,7 @@ pub struct DataManagerConfiguration {
 impl DataManagerConfiguration {
     pub fn new(
         record_tx_address: bool, tx_cache_count: usize, db_types: Option<Value>,
-    ) -> Self
-    {
+    ) -> Self {
         Self {
             record_tx_address,
             tx_cache_count,

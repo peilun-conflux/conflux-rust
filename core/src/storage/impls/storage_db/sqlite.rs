@@ -69,10 +69,10 @@ impl SqliteConnection {
         // open_flags.
         unsafe {
             std::mem::transmute::<i32, OpenFlags>(
-                sqlite_ffi::SQLITE_OPEN_NOMUTEX
+//                sqlite_ffi::SQLITE_OPEN_NOMUTEX
                     // TODO: check if SHARED_CACHE improves the performance or not.
-                    | sqlite_ffi::SQLITE_OPEN_SHAREDCACHE
-                    | sqlite_ffi::SQLITE_OPEN_URI,
+                    sqlite_ffi::SQLITE_OPEN_PRIVATECACHE
+                    | sqlite_ffi::SQLITE_OPEN_URI | SQLITE_OPEN_EXCLUSIVE,
             )
         }
     }
@@ -619,3 +619,4 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
 };
+use sqlite3_sys::{SQLITE_CONFIG_SINGLETHREAD, SQLITE_OPEN_EXCLUSIVE};

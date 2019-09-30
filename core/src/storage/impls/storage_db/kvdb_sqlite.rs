@@ -46,7 +46,7 @@ impl KvdbSqliteStatements {
     pub const BYTES_KEY_TABLE_SUFFIX: &'static str = "_bytes_key";
     // TODO(yz): check if WITHOUT ROWID is faster: see https://www.sqlite.org/withoutrowid.html.
     pub const CREATE_TABLE_BLOB_KV_STATEMENT_TMPL: &'static str =
-        "CREATE TABLE IF NOT EXISTS {table_name} ( key BLOB PRIMARY KEY, {value_columns_def} ) WITHOUT ROWID";
+        "CREATE TABLE IF NOT EXISTS {table_name} ( key BLOB PRIMARY KEY, {value_columns_def} )";
     // INTEGER PRIMARY KEY is special, see https://www.sqlite.org/lang_createtable.html#rowid.
     pub const CREATE_TABLE_NUMBER_KV_STATEMENT_TMPL: &'static str =
         "CREATE TABLE IF NOT EXISTS {table_name} ( key INTEGER PRIMARY KEY, {value_columns_def} )";

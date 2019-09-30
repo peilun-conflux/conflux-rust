@@ -15,20 +15,28 @@ use primitives::{Block, BlockHeader, SignedTransaction, TransactionAddress};
 use rlp::{Decodable, Encodable, Rlp};
 use std::{collections::HashMap, fs, path::Path, str::FromStr, sync::Arc};
 
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
-use flate2::read::GzDecoder;
-
+use flate2::{read::GzDecoder, write::ZlibEncoder, Compression};
 
 use metrics::{register_meter_with_group, Meter, MeterTimer};
+use flate2::write::GzEncoder;
+use std::io::Read;
 
 lazy_static! {
     static ref SYNC_INSERT_HEADER_LOCAL_BLOCK_FROM_DB: Arc<dyn Meter> =
-    register_meter_with_group("timer", "sync::insert_header_local_block_from_db");
+        register_meter_with_group(
+            "timer",
+            "sync::insert_header_local_block_from_db"
+        );
     static ref SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_1: Arc<dyn Meter> =
-    register_meter_with_group("timer", "sync::insert_header_load_decodable_val_1");
+        register_meter_with_group(
+            "timer",
+            "sync::insert_header_load_decodable_val_1"
+        );
     static ref SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2: Arc<dyn Meter> =
-    register_meter_with_group("timer", "sync::insert_header_load_decodable_val_2");
+        register_meter_with_group(
+            "timer",
+            "sync::insert_header_load_decodable_val_2"
+        );
 }
 
 const LOCAL_BLOCK_INFO_SUFFIX_BYTE: u8 = 1;
@@ -58,7 +66,6 @@ impl FromStr for DBTable {
         }
     }
 }
-
 
 fn rocks_db_col(table: DBTable) -> Option<u32> {
     match table {
@@ -211,7 +218,9 @@ impl DBManager {
     pub fn local_block_info_from_db(
         &self, block_hash: &H256,
     ) -> Option<LocalBlockInfo> {
-        let _timer = MeterTimer::time_func(SYNC_INSERT_HEADER_LOCAL_BLOCK_FROM_DB.as_ref());
+        let _timer = MeterTimer::time_func(
+            SYNC_INSERT_HEADER_LOCAL_BLOCK_FROM_DB.as_ref(),
+        );
         self.load_decodable_val(
             DBTable::Blocks,
             &local_block_info_key(block_hash),
@@ -351,12 +360,12 @@ impl DBManager {
     /// The functions below are private utils used by the DBManager to access
     /// database
     fn insert_to_db(&self, table: DBTable, db_key: &[u8], value: Vec<u8>) {
-//        let mut e = GzEncoder::new(value, Compression::default());
-//        let compressed_value = e.finish();
+                let mut e = GzEncoder::new(value, Compression::default());
+                let compressed_value = e.finish().unwrap();
         self.table_db_map
             .get(&table)
             .unwrap()
-            .put(db_key, &value)
+            .put(db_key, &compressed_value)
             .ok();
     }
 
@@ -365,13 +374,19 @@ impl DBManager {
     }
 
     fn load_from_db(&self, table: DBTable, db_key: &[u8]) -> Option<Box<[u8]>> {
-        let _timer1 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_1.as_ref());
-        let tmp =self.table_db_map.get(&table).unwrap();
+        let _timer1 = MeterTimer::time_func(
+            SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_1.as_ref(),
+        );
+        let tmp = self.table_db_map.get(&table).unwrap();
         drop(_timer1);
-        let _timer2 = MeterTimer::time_func(SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2.as_ref());
-        tmp.get(db_key).unwrap()
-//        let mut d = GzDecoder::new(value.as_ref());
-//        d.read()
+        let _timer2 = MeterTimer::time_func(
+            SYNC_INSERT_HEADER_LOAD_DECODABLE_VAL_2.as_ref(),
+        );
+        let value = tmp.get(db_key).unwrap()?;
+        let mut d = GzDecoder::new(value.as_ref());
+        let mut decompressed_value = Vec::new();
+        d.read_to_end(&mut decompressed_value);
+        Some(decompressed_value.into_boxed_slice())
     }
 
     fn insert_encodable_val<V>(
