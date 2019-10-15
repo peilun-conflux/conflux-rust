@@ -56,6 +56,8 @@ strfmt = "0.1"
 rustc-hex = "1.0"
 parity-bytes = "0.1"
 flate2 = "1.0"
+sled = "0.28"
+libbdb = {path = "../util/libbdb-rs" }
 
 
 [dev-dependencies]
