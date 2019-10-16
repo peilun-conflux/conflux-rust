@@ -99,7 +99,7 @@ fn open_bdb() -> KvdbBdb {
     let env = libdb::EnvironmentBuilder::new()
         .home(BDB_PATH)
         .log_flags(libdb::flags::DB_LOG_AUTO_REMOVE)
-        .flags(libdb::DB_CREATE | libdb::DB_INIT_MPOOL | libdb::DB_INIT_LOG | libdb::DB_INIT_TXN)
+        .flags(libdb::DB_CREATE | libdb::DB_INIT_MPOOL | libdb::DB_INIT_LOG | libdb::DB_INIT_TXN | libdb::DB_INIT_LOCK|libdb::DB_RECOVER|libdb::DB_THREAD)
         .open()
         .unwrap();
 
