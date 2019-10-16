@@ -30,7 +30,7 @@ use libbdb as libdb;
 use libbdb::{Database as BdbDatabase};
 use std::time::Instant;
 
-const NUM_KEYS: usize = 100000;
+const NUM_KEYS: usize = 10000;
 const SQLITE_PATH: &str = "sqlite";
 const ROCKSDB_PATH: &str = "rocksdb";
 const SLED_PATH: &str = "sleddb";
@@ -110,7 +110,7 @@ fn open_bdb() -> KvdbBdb {
         .transaction(&txn)
         .file("db")
         .db_type(libdb::DbType::BTree)
-        .flags(libdb::flags::DB_CREATE)
+        .flags(libdb::flags::DB_CREATE|libdb::flags::DB_NOMMAP)
         .open()
         .unwrap();
 
