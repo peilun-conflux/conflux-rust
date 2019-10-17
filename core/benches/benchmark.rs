@@ -30,7 +30,7 @@ use libbdb as libdb;
 use libbdb::{Database as BdbDatabase};
 use std::time::Instant;
 
-const NUM_KEYS: usize = 10000;
+const NUM_KEYS: usize = 100000;
 const SQLITE_PATH: &str = "sqlite";
 const ROCKSDB_PATH: &str = "rocksdb";
 const SLED_PATH: &str = "sleddb";
@@ -67,6 +67,12 @@ struct KvdbBdb {
     db: BdbDatabase,
 }
 
+impl KvdbBdb {
+    pub fn sync(&self) {
+        self.db.sync();
+    }
+}
+
 impl KeyValueDbTypes for KvdbBdb {
     type ValueType = Box<[u8]>;
 }
@@ -93,28 +99,30 @@ impl KeyValueDbTrait for KvdbBdb {
 }
 
 fn open_bdb() -> KvdbBdb {
+    println!("open bdb");
     if let Err(e) = fs::create_dir_all(BDB_PATH) {
         panic!("Error creating database directory: {:?}", e);
     }
     let env = libdb::EnvironmentBuilder::new()
         .home(BDB_PATH)
-        .log_flags(libdb::flags::DB_LOG_AUTO_REMOVE)
-        .flags(libdb::DB_CREATE | libdb::DB_INIT_MPOOL | libdb::DB_INIT_LOG | libdb::DB_INIT_TXN | libdb::DB_INIT_LOCK|libdb::DB_RECOVER|libdb::DB_THREAD)
+//        .log_flags(libdb::flags::DB_LOG_AUTO_REMOVE)
+//        .flags(libdb::DB_CREATE | libdb::DB_INIT_LOCK)
+        .flags(libdb::DB_CREATE | libdb::DB_INIT_MPOOL |libdb::DB_INIT_LOCK)
         .open()
         .unwrap();
 
-    let txn = env.txn(None, libdb::flags::DB_NONE).unwrap();
+//    let txn = env.txn(None, libdb::flags::DB_NONE).unwrap();
 
     let db = libdb::DatabaseBuilder::new()
         .environment(&env)
-        .transaction(&txn)
+//        .transaction(&txn)
         .file("db")
         .db_type(libdb::DbType::BTree)
-        .flags(libdb::flags::DB_CREATE|libdb::flags::DB_NOMMAP)
+        .flags(libdb::DB_CREATE)
         .open()
         .unwrap();
 
-    txn.commit(libdb::CommitType::Inherit).expect("Commit failed!");
+//    txn.commit(libdb::CommitType::Inherit).expect("Commit failed!");
     KvdbBdb {
         db
     }
@@ -179,7 +187,7 @@ fn rocksdb_get_benchmark(c: &mut Criterion) {
     bench_kvdb(c, kvdb_rocksdb);
 }
 
-fn setup_bdb(c: &mut Criterion) { setup_kvdb(c, open_bdb()) }
+//fn setup_bdb(c: &mut Criterion) { setup_kvdb(c, open_bdb()) }
 
 fn setup_sled(c: &mut Criterion) { setup_kvdb(c, open_sled()) }
 
@@ -234,6 +242,31 @@ fn setup_kvdb<T: 'static + KeyValueDbTrait<ValueType = Box<[u8]>>>(
     println!("All keys inserted: {} seconds used", start.elapsed().as_secs_f32());
 }
 
+fn setup_bdb(
+    c: &mut Criterion
+) {
+    let kvdb = open_bdb();
+    let start = Instant::now();
+    let mut keys = Vec::new();
+    for i in 0..NUM_KEYS {
+        if i % 1000 == 0 {
+            println!("{} keys inserted : {} seconds used", i, start.elapsed().as_secs_f32());
+            kvdb.sync();
+        }
+        let key: H256 = random();
+        let value: Vec<u8> = if i % 2 == 0 {
+            (0..300000).map(|_| rand::random::<u8>()).collect()
+        } else {
+            vec![0]
+        };
+        keys.push(key);
+        kvdb.put(key.as_ref(), value.as_slice());
+    }
+    let keys_encoded = rlp::encode_list(&keys);
+    kvdb.put(b"keys", &keys_encoded);
+    println!("All keys inserted: {} seconds used", start.elapsed().as_secs_f32());
+}
+
 criterion_group!(benches, bdb_get_benchmark);
 criterion_group!(setup, setup_bdb);
-criterion_main!(setup, benches);
+criterion_main!(benches);
