@@ -52,6 +52,7 @@ ethkey = { path = "accounts/ethkey" }
 parity-wordlist = "1.3.0"
 rustc-hex = "2.0.1"
 env_logger = "0.5"
+cfx-bytes = {path = "cfx_bytes"}
 
 [[bin]]
 name = "consensus_bench"
@@ -64,6 +65,11 @@ path = "tools/cfx-gen-dot/main.rs"
 [[bin]]
 name = "ethkey"
 path = "accounts/ethkey/cli/src/main.rs"
+
+[[bin]]
+name = "tx_bench"
+path = "core/src/tx_bench.rs"
+
 
 # Use workspace section to allow test all cases under root folder (cargo test --all).
 [workspace]

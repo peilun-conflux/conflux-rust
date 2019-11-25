@@ -286,9 +286,6 @@ impl StateManager {
                 .get_delta_mpt(parent_state_index.snapshot_epoch_id)?;
             let maybe_delta_root = delta_mpt
                 .get_root_node_ref_by_epoch(parent_state_index.epoch_id)?;
-            if maybe_delta_root.is_none() {
-                return Ok(None);
-            }
 
             Self::get_state_trees_internal(
                 maybe_snapshot.unwrap(),
