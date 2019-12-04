@@ -69,7 +69,6 @@ fn main() -> Result<(), Error> {
     let mut nonce_vec = vec![0 as usize; account_vec.len()];
     let mut balance_vec = vec![INITIAL_BALANCE; account_vec.len()];
     let total_n_tx = arg_val(&matches, "n-tx");
-    let mut n_tx = total_n_tx;
     let tx_per_epoch : usize = arg_val(&matches, "tx-per-epoch");
     let mut rng = thread_rng();
     let spec = Spec::new_spec();
@@ -78,61 +77,65 @@ fn main() -> Result<(), Error> {
     let mut env = Env::default();
     env.gas_limit = (tx_per_epoch * 21000).into();
 
-    let mut epoch_tx_vec = Vec::new();
-    let sign_start = Instant::now();
-    while n_tx != 0 {
-        let n_tx_epoch = min(n_tx, tx_per_epoch);
-        let mut tx_vec = Vec::new();
-        for _ in 0..n_tx_epoch {
-            let sender_index = rng.next_u32() as usize % account_vec.len();
-            let receiver_index = rng.next_u32() as usize % account_vec.len();
-            let mut sender_nonce = nonce_vec.get_mut(sender_index).unwrap();
-            let tx = Transaction {
-                nonce: (*sender_nonce).into(),
-                gas: TRANSFER_BALANCE.into(),
-                gas_price: 1.into(),
-                action: Call(account_vec[receiver_index].address()),
-                value: TRANSFER_BALANCE.into(),
-                data: Bytes::new(),
-            };
-            let signed_tx = tx.sign(account_vec[sender_index].secret());
-            *sender_nonce += 1;
-            balance_vec[sender_index] -= TRANSFER_BALANCE;
-            balance_vec[receiver_index] += TRANSFER_BALANCE - 21000;
-            tx_vec.push(signed_tx);
+    let rounds: usize = arg_val(&matches, "rounds");
+    for _ in 0..rounds {
+        let mut n_tx = total_n_tx;
+        let mut epoch_tx_vec = Vec::new();
+        let sign_start = Instant::now();
+        while n_tx != 0 {
+            let n_tx_epoch = min(n_tx, tx_per_epoch);
+            let mut tx_vec = Vec::new();
+            for _ in 0..n_tx_epoch {
+                let sender_index = rng.next_u32() as usize % account_vec.len();
+                let receiver_index = rng.next_u32() as usize % account_vec.len();
+                let mut sender_nonce = nonce_vec.get_mut(sender_index).unwrap();
+                let tx = Transaction {
+                    nonce: (*sender_nonce).into(),
+                    gas: TRANSFER_BALANCE.into(),
+                    gas_price: 1.into(),
+                    action: Call(account_vec[receiver_index].address()),
+                    value: TRANSFER_BALANCE.into(),
+                    data: Bytes::new(),
+                };
+                let signed_tx = tx.sign(account_vec[sender_index].secret());
+                *sender_nonce += 1;
+                balance_vec[sender_index] -= TRANSFER_BALANCE;
+                balance_vec[receiver_index] += TRANSFER_BALANCE - 21000;
+                tx_vec.push(signed_tx);
+            }
+            println!("sign_elapsed = {:?}", sign_start.elapsed());
+            epoch_tx_vec.push(tx_vec);
+            n_tx -= n_tx_epoch;
         }
-        println!("sign_elapsed = {:?}", sign_start.elapsed());
-        epoch_tx_vec.push(tx_vec);
-        n_tx -= n_tx_epoch;
-    }
 
-    let start = Instant::now();
-    n_tx = total_n_tx;
-    for tx_vec in epoch_tx_vec {
-        let state_index = StateIndex::new_for_test_only_delta_mpt(&epoch);
-        let mut state = State::new(StateDb::new(state_manager.get_state_for_next_epoch(state_index).unwrap().unwrap()), 0.into(), VmFactory::default());
-        let epoch_start = Instant::now();
-        for signed_tx in &tx_vec {
-            let mut nonce_increased = false;
-            let r = Executive::new(&mut state, &env, &machine, &spec)
+        let start = Instant::now();
+        n_tx = total_n_tx;
+        for tx_vec in epoch_tx_vec {
+            let state_index = StateIndex::new_for_test_only_delta_mpt(&epoch);
+            let mut state = State::new(StateDb::new(state_manager.get_state_for_next_epoch(state_index).unwrap().unwrap()), 0.into(), VmFactory::default());
+            let epoch_start = Instant::now();
+            for signed_tx in &tx_vec {
+                let mut nonce_increased = false;
+                let r = Executive::new(&mut state, &env, &machine, &spec)
                     .transact(signed_tx, &mut nonce_increased);
-            assert!(r.is_ok() && nonce_increased == true);
-        }
-        n_tx -= tx_vec.len();
-        let progress = (total_n_tx - n_tx) * 100 / total_n_tx;
-        println!(
-            "{} tx executed, progress = {}%, elapsed = {:?}",
-            tx_vec.len(),
-            progress,
-            epoch_start.elapsed()
-        );
+                assert!(r.is_ok() && nonce_increased == true);
+            }
+            n_tx -= tx_vec.len();
+            let progress = (total_n_tx - n_tx) * 100 / total_n_tx;
+            println!(
+                "{} tx executed, progress = {}%, elapsed = {:?}",
+                tx_vec.len(),
+                progress,
+                epoch_start.elapsed()
+            );
 
-        let commit_start = Instant::now();
-        epoch = H256::random();
-        state.commit(epoch);
-        println!("commit_elapsed = {:?}", commit_start.elapsed());
+            let commit_start = Instant::now();
+            epoch = H256::random();
+            state.commit(epoch);
+            println!("commit_elapsed = {:?}", commit_start.elapsed());
+        }
+        println!("{} tx executed in total, elapsed = {:?} tps = {}", total_n_tx, start.elapsed(), total_n_tx as u64 / start.elapsed().as_secs());
     }
-    println!("{} tx executed in total, elapsed = {:?} tps = {}", total_n_tx, start.elapsed(), total_n_tx as u64 / start.elapsed().as_secs());
 
     Ok(())
 }
@@ -184,6 +187,12 @@ fn parse_args<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .help("The number of cached node in storage")
                 .default_value("50000")
+        )
+        .arg(
+            Arg::with_name("rounds")
+                .long("rounds")
+                .takes_value(true)
+                .default_value("1")
         )
 //        .arg(
 //            Arg::with_name("node-map-size")
