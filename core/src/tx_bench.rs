@@ -100,7 +100,6 @@ fn main() -> Result<(), Error> {
                 tx_vec.sort_by(|e1, e2| e1.0.partial_cmp(&e2.0).unwrap());
                 let sorted_tx_vec: Vec<SignedTransaction> = tx_vec.iter().map(|e| e.1.clone()).collect();
                 n_tx -= n_tx_epoch;
-                println!("sign_elapsed = {:?}", sign_start.elapsed());
                 tx_sender.send(Some(sorted_tx_vec));
             }
         }
