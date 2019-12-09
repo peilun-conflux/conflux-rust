@@ -13,11 +13,12 @@ pub struct StateTrees {
     /// so we don't need to look up intermediate trie.
     pub maybe_intermediate_trie: Option<Arc<DeltaMpt>>,
     pub intermediate_trie_root: Option<NodeRefDeltaMpt>,
-    pub maybe_intermediate_trie_key_padding: Option<KeyPadding>,
+    pub intermediate_trie_root_merkle: MerkleHash,
+    pub maybe_intermediate_trie_key_padding: Option<DeltaMptKeyPadding>,
     /// Delta trie can't be none since we may commit into it.
     pub delta_trie: Arc<DeltaMpt>,
     pub delta_trie_root: Option<NodeRefDeltaMpt>,
-    pub delta_trie_key_padding: KeyPadding,
+    pub delta_trie_key_padding: DeltaMptKeyPadding,
     /// Information for making new snapshot when necessary.
     pub maybe_delta_trie_height: Option<u32>,
     pub maybe_height: Option<u64>,
@@ -50,7 +51,7 @@ impl StateManager {
             None => {}
             Some(node) => {
                 // Debugging log.
-                info!("State root committed for epoch {:?}", epoch_id);
+                debug!("State root committed for epoch {:?}", epoch_id);
                 delta_trie.set_parent_epoch(parent_epoch_id, epoch_id.clone());
                 delta_trie.set_epoch_root(epoch_id, node.clone());
                 delta_trie.set_root_node_ref(merkle_root.clone(), node.clone());
@@ -127,38 +128,42 @@ impl StateManager {
     pub fn get_state_trees_internal(
         snapshot_db: SnapshotDb,
         maybe_intermediate_trie: Option<Arc<DeltaMpt>>,
-        maybe_intermediate_trie_key_padding: Option<&KeyPadding>,
+        maybe_intermediate_trie_key_padding: Option<&DeltaMptKeyPadding>,
         delta_mpt: Arc<DeltaMpt>,
-        maybe_delta_mpt_key_padding: Option<&KeyPadding>,
+        maybe_delta_mpt_key_padding: Option<&DeltaMptKeyPadding>,
         intermediate_epoch_id: &EpochId, epoch_id: &EpochId,
         maybe_delta_root: Option<NodeRefDeltaMpt>, maybe_height: Option<u64>,
         maybe_delta_trie_height: Option<u32>,
     ) -> Result<Option<StateTrees>>
     {
-        let intermediate_trie_root = if intermediate_epoch_id.eq(&NULL_EPOCH) {
-            None
+        let intermediate_trie_root_merkle;
+        let intermediate_trie_root;
+        if maybe_intermediate_trie.is_none() {
+            intermediate_trie_root_merkle = MERKLE_NULL_NODE;
+            intermediate_trie_root = None;
         } else {
-            maybe_intermediate_trie
+            intermediate_trie_root_merkle = match maybe_intermediate_trie
                 .as_ref()
                 .unwrap()
-                .get_root_node_ref_by_epoch(intermediate_epoch_id)?
+                .get_merkle_root_by_epoch_id(intermediate_epoch_id)?
+            {
+                None => MERKLE_NULL_NODE,
+                Some(merkle_root) => merkle_root,
+            };
+            intermediate_trie_root =
+                maybe_intermediate_trie
+                    .as_ref()
+                    .unwrap()
+                    .get_root_node_ref_by_epoch(intermediate_epoch_id)?
         };
         let delta_trie_key_padding = match maybe_delta_mpt_key_padding {
             Some(x) => x.clone(),
             None => {
                 // TODO: maybe we can move the calculation to a central place
                 // and cache the result?
-                let intermediate_merkle_root = match maybe_intermediate_trie
-                    .as_ref()
-                    .unwrap()
-                    .get_merkle_root_by_epoch_id(intermediate_epoch_id)?
-                {
-                    None => return Ok(None),
-                    Some(merkle_root) => merkle_root,
-                };
-                DeltaMpt::padding(
+                StorageKey::delta_mpt_padding(
                     &snapshot_db.get_snapshot_info().merkle_root,
-                    &intermediate_merkle_root,
+                    &intermediate_trie_root_merkle,
                 )
             }
         };
@@ -167,6 +172,7 @@ impl StateManager {
             snapshot_db,
             maybe_intermediate_trie,
             intermediate_trie_root,
+            intermediate_trie_root_merkle,
             maybe_intermediate_trie_key_padding:
                 maybe_intermediate_trie_key_padding.cloned(),
             delta_trie: delta_mpt,
@@ -204,22 +210,19 @@ impl StateManager {
                     .get_delta_mpt(&state_index.snapshot_epoch_id)?;
                 let maybe_delta_root = delta_mpt
                     .get_root_node_ref_by_epoch(state_index.epoch_id)?;
-                if maybe_delta_root.is_none() {
-                    Ok(None)
-                } else {
-                    Self::get_state_trees_internal(
-                        snapshot,
-                        maybe_intermediate_mpt,
-                        state_index.maybe_intermediate_mpt_key_padding,
-                        delta_mpt,
-                        Some(state_index.delta_mpt_key_padding),
-                        state_index.intermediate_epoch_id,
-                        state_index.epoch_id,
-                        maybe_delta_root,
-                        state_index.maybe_height,
-                        state_index.maybe_delta_trie_height,
-                    )
-                }
+
+                Self::get_state_trees_internal(
+                    snapshot,
+                    maybe_intermediate_mpt,
+                    state_index.maybe_intermediate_mpt_key_padding,
+                    delta_mpt,
+                    Some(state_index.delta_mpt_key_padding),
+                    state_index.intermediate_epoch_id,
+                    state_index.epoch_id,
+                    maybe_delta_root,
+                    state_index.maybe_height,
+                    state_index.maybe_delta_trie_height,
+                )
             }
         }
     }
@@ -286,7 +289,6 @@ impl StateManager {
                 .get_delta_mpt(parent_state_index.snapshot_epoch_id)?;
             let maybe_delta_root = delta_mpt
                 .get_root_node_ref_by_epoch(parent_state_index.epoch_id)?;
-
             Self::get_state_trees_internal(
                 maybe_snapshot.unwrap(),
                 self.storage_manager.get_intermediate_mpt(
@@ -315,7 +317,7 @@ impl StateManager {
             self.storage_manager.clone(),
             intermediate_epoch_id.clone(),
             new_height,
-            DeltaMptInserter {
+            DeltaMptIterator {
                 maybe_mpt: intermediate_trie,
                 maybe_root_node: intermediate_trie_root,
             },
@@ -346,6 +348,7 @@ impl StateManagerTrait for StateManager {
                     .unwrap(),
                 maybe_intermediate_trie: None,
                 intermediate_trie_root: None,
+                intermediate_trie_root_merkle: MERKLE_NULL_NODE,
                 maybe_intermediate_trie_key_padding: None,
                 delta_trie: self
                     .storage_manager
@@ -385,35 +388,24 @@ impl StateManagerTrait for StateManager {
             Some(state_trees) => Ok(Some(State::new(self, state_trees))),
         }
     }
-
-    fn contains_state(&self, epoch_id: StateIndex) -> Result<bool> {
-        let maybe_state_trees = self.get_state_trees(&epoch_id)?;
-        Ok(match maybe_state_trees {
-            None => {
-                warn!("Failed to load state for epoch {:?}", epoch_id);
-                false
-            }
-            Some(_) => true,
-        })
-    }
 }
 
 use super::{
-    super::{state::*, state_manager::*, storage_db::*, storage_key::*},
+    super::{state::*, state_manager::*, storage_db::*},
+    delta_mpt::*,
     errors::*,
-    multi_version_merkle_patricia_trie::{
-        merkle_patricia_trie::NodeRefDeltaMpt, *,
-    },
     storage_db::{
         delta_db_manager_rocksdb::DeltaDbManagerRocksdb,
         snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
     },
-    storage_manager::storage_manager::{DeltaMptInserter, StorageManager},
+    storage_manager::storage_manager::{DeltaMptIterator, StorageManager},
 };
 use crate::{ext_db::SystemDB, statedb::StateDb};
 use cfx_types::{Address, U256};
 use primitives::{
-    Account, Block, BlockHeaderBuilder, EpochId, MerkleHash, NULL_EPOCH,
+    Account, Block, BlockHeaderBuilder, DeltaMptKeyPadding, EpochId,
+    MerkleHash, StorageKey, GENESIS_DELTA_MPT_KEY_PADDING, MERKLE_NULL_NODE,
+    NULL_EPOCH,
 };
 use std::{
     collections::HashMap,

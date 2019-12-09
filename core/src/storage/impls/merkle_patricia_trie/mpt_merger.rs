@@ -20,7 +20,10 @@
 // TODO(yz): In future merge can be made into multiple threads easily by merging
 // different children in parallel then combine the root node.
 pub struct MptMerger<'a> {
-    rw_cursor: MptCursorRw<MergeMptsInRequest<'a>>,
+    rw_cursor: MptCursorRw<
+        MergeMptsInRequest<'a>,
+        ReadWritePathNode<MergeMptsInRequest<'a>>,
+    >,
 }
 
 impl<'a> MptMerger<'a> {
@@ -38,7 +41,7 @@ impl<'a> MptMerger<'a> {
     }
 
     // TODO(yz): Invent a trait for inserter to generalize.
-    pub fn merge(&mut self, inserter: &DeltaMptInserter) -> Result<MerkleHash> {
+    pub fn merge(&mut self, inserter: &DeltaMptIterator) -> Result<MerkleHash> {
         self.rw_cursor.load_root()?;
 
         struct Merger<'x, 'a: 'x> {
@@ -171,11 +174,11 @@ impl GetRwMpt for MergeMptsInRequest<'_> {
 }
 
 use super::{
-    super::super::{
+    super::{
         super::storage_db::snapshot_mpt::*, errors::*,
-        storage_manager::DeltaMptInserter,
+        storage_manager::DeltaMptIterator,
     },
-    cow_node_ref::KVInserter,
     mpt_cursor::*,
+    KVInserter,
 };
 use primitives::MerkleHash;

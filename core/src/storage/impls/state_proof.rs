@@ -31,12 +31,12 @@ impl StateProof {
     pub fn is_valid_kv(
         &self, key: &Vec<u8>, value: Option<&[u8]>, root: StateRoot,
     ) -> bool {
-        let delta_root = root.delta_root;
-        let intermediate_root = root.intermediate_delta_root;
-        let snapshot_root = root.snapshot_root;
+        let delta_root = &root.delta_root;
+        let intermediate_root = &root.intermediate_delta_root;
+        let snapshot_root = &root.snapshot_root;
 
         let delta_mpt_padding =
-            DeltaMpt::padding(&snapshot_root, &intermediate_root);
+            StorageKey::delta_mpt_padding(&snapshot_root, &intermediate_root);
         let delta_mpt_key = StorageKey::from_key_bytes(&key)
             .to_delta_mpt_key_bytes(&delta_mpt_padding);
         // FIXME: DeltaMpt Padding for intermediate_mpt is missing. It's
@@ -67,14 +67,14 @@ impl StateProof {
             // proof of non-existence with a single trie
             (None, Some(p1), None, None) => {
                 p1.is_valid_kv(key, None, delta_root)
-                    && intermediate_root == MERKLE_NULL_NODE
-                    && snapshot_root == MERKLE_NULL_NODE
+                    && intermediate_root.eq(&MERKLE_NULL_NODE)
+                    && snapshot_root.eq(&MERKLE_NULL_NODE)
             }
             // proof of non-existence with two tries
             (None, Some(p1), Some(p2), None) => {
                 p1.is_valid_kv(&delta_mpt_key, None, delta_root)
                     && p2.is_valid_kv(key, None, intermediate_root)
-                    && snapshot_root == MERKLE_NULL_NODE
+                    && snapshot_root.eq(&MERKLE_NULL_NODE)
             }
             // proof of non-existence with all tries
             (None, Some(p1), Some(p2), Some(p3)) => {
@@ -85,18 +85,15 @@ impl StateProof {
             // no proofs available
             (_, None, None, None) => {
                 value.is_none()
-                    && delta_root == MERKLE_NULL_NODE
-                    && intermediate_root == MERKLE_NULL_NODE
-                    && snapshot_root == MERKLE_NULL_NODE
+                    && delta_root.eq(&MERKLE_NULL_NODE)
+                    && intermediate_root.eq(&MERKLE_NULL_NODE)
+                    && snapshot_root.eq(&MERKLE_NULL_NODE)
             }
             _ => false,
         }
     }
 }
 
-use super::{
-    super::StorageKey,
-    multi_version_merkle_patricia_trie::{DeltaMpt, TrieProof},
-};
-use primitives::{StateRoot, MERKLE_NULL_NODE};
+use super::merkle_patricia_trie::TrieProof;
+use primitives::{StateRoot, StorageKey, MERKLE_NULL_NODE};
 use rlp_derive::{RlpDecodable, RlpEncodable};

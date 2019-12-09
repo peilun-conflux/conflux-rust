@@ -462,11 +462,11 @@ fn test_set_order_concurrent() {
                 )
                 .unwrap()
                 .unwrap();
-            println!(
-                "Setting state_{} with {} keys.",
-                2 + thread_id,
-                keys.len()
-            );
+            //            println!(
+            //                "Setting state_{} with {} keys.",
+            //                2 + thread_id,
+            //                keys.len()
+            //            );
             for key in keys.iter().rev() {
                 let key_slice = &key[..];
                 let actual_key = vec![key_slice; 3].concat();
@@ -550,19 +550,11 @@ fn test_proofs() {
         // invalid value
         assert!(!proof.is_valid_kv(key, Some(&[0x00; 100][..]), root.clone()));
 
-        // invalid hash
-        let mut invalid_proof = proof.clone();
-        if let Some(delta_proof) = &mut invalid_proof.delta_proof {
-            let mut wrong_merkle = delta_proof.nodes[0].get_merkle().clone();
-            wrong_merkle.as_bytes_mut()[0] = 0x00;
-            delta_proof.nodes[0].set_merkle(&wrong_merkle);
-        }
-
-        assert!(!invalid_proof.is_valid_kv(key, value, root.clone()));
+        // invalid non-existence.
+        assert!(!proof.is_valid_kv(key, None, root.clone()));
 
         // test rlp
         assert_eq!(proof, rlp::decode(&rlp::encode(&proof)).unwrap());
-        assert_ne!(proof, rlp::decode(&rlp::encode(&invalid_proof)).unwrap());
     }
 
     let nonexistent_keys: Vec<[u8; 4]> = generate_keys(DEFAULT_NUMBER_OF_KEYS)
@@ -589,13 +581,13 @@ fn test_proofs() {
 
 use super::{
     super::{
-        impls::multi_version_merkle_patricia_trie::merkle_patricia_trie::CompressedPathRaw,
-        state::*, state_manager::*, storage_key::StorageKey,
+        impls::merkle_patricia_trie::CompressedPathRaw, state::*,
+        state_manager::*,
     },
     new_state_manager_for_testing,
 };
 use cfx_types::H256;
-use primitives::StateRoot;
+use primitives::{StateRoot, StorageKey};
 use rand::{prelude::SliceRandom, Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::{mem, sync::Arc, thread};

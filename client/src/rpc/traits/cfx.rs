@@ -12,7 +12,7 @@ use jsonrpc_core::Result as RpcResult;
 use jsonrpc_derive::rpc;
 
 /// Cfx rpc interface.
-#[rpc]
+#[rpc(server)]
 pub trait Cfx {
     //        /// Returns protocol version encoded as a string (quotes are
     // necessary).        #[rpc(name = "cfx_protocolVersion")]
@@ -43,6 +43,18 @@ pub trait Cfx {
     /// Returns balance of the given account.
     #[rpc(name = "cfx_getBalance")]
     fn balance(
+        &self, addr: RpcH160, epoch_number: Option<EpochNumber>,
+    ) -> RpcResult<RpcU256>;
+
+    /// Returns balance of the given account.
+    #[rpc(name = "cfx_getBankBalance")]
+    fn bank_balance(
+        &self, addr: RpcH160, epoch_number: Option<EpochNumber>,
+    ) -> RpcResult<RpcU256>;
+
+    /// Returns balance of the given account.
+    #[rpc(name = "cfx_getStorageBalance")]
+    fn storage_balance(
         &self, addr: RpcH160, epoch_number: Option<EpochNumber>,
     ) -> RpcResult<RpcU256>;
 

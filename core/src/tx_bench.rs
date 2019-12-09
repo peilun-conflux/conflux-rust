@@ -11,7 +11,6 @@ use cfxcore::{
         state_manager::{
             StateManager, StateManagerTrait, StorageConfiguration,
         },
-        storage_key::StorageKey,
         StateIndex,
     },
     sync::{
@@ -21,17 +20,9 @@ use cfxcore::{
     },
 };
 use clap::{App, Arg, ArgMatches};
-use primitives::{Account, MerkleHash, Transaction};
+use primitives::{Account, MerkleHash, Transaction, StorageKey, SignedTransaction};
 use rlp::Rlp;
-use std::{
-    cmp::min,
-    fmt::Debug,
-    fs::{create_dir_all, remove_dir_all},
-    path::{Path, PathBuf},
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{cmp::min, fmt::Debug, fs::{create_dir_all, remove_dir_all}, path::{Path, PathBuf}, str::FromStr, sync::Arc, time::{Duration, Instant}, thread};
 use std::collections::HashMap;
 use rand::{thread_rng, Rng, RngCore};
 use ethkey::{KeyPair, Random, Generator};
@@ -42,6 +33,7 @@ use cfxcore::machine::new_machine_with_builtin;
 use cfxcore::executive::Executive;
 use cfxcore::state::State;
 use cfxcore::vm_factory::VmFactory;
+use std::sync::mpsc::{channel, sync_channel};
 
 const INITIAL_BALANCE: u128 = 1_000_000_000_000;
 const TRANSFER_BALANCE: u128 = 21_000;
@@ -66,76 +58,92 @@ fn main() -> Result<(), Error> {
     let accounts_per_epoch = arg_val(&matches, "accounts-per-epoch");
     let (checkpoint, checkpoint_root, account_vec) =
         prepare_checkpoint(&state_manager, genesis_hash, accounts, accounts_per_epoch)?;
-    let mut nonce_vec = vec![0 as usize; account_vec.len()];
-    let mut balance_vec = vec![INITIAL_BALANCE; account_vec.len()];
     let total_n_tx = arg_val(&matches, "n-tx");
     let tx_per_epoch : usize = arg_val(&matches, "tx-per-epoch");
-    let mut rng = thread_rng();
+    let (tx_sender, tx_receiver) = sync_channel(2);
+
+    let rounds: usize = arg_val(&matches, "rounds");
+    thread::spawn(move || {
+        let mut nonce_vec = vec![0 as usize; account_vec.len()];
+        let mut balance_vec = vec![INITIAL_BALANCE; account_vec.len()];
+        let mut rng = thread_rng();
+        let thread_pool = threadpool::ThreadPool::new(8);
+        for _ in 0..rounds {
+            let mut n_tx = total_n_tx;
+            let sign_start = Instant::now();
+            while n_tx != 0 {
+                let (epoch_tx_sender, epoch_tx_receiver) = channel();
+                let n_tx_epoch = min(n_tx, tx_per_epoch);
+                for i in 0..n_tx_epoch {
+                    let sender_index = rng.next_u32() as usize % account_vec.len();
+                    let receiver_index = rng.next_u32() as usize % account_vec.len();
+                    let mut sender_nonce = nonce_vec.get_mut(sender_index).unwrap();
+                    let tx = Transaction {
+                        nonce: (*sender_nonce).into(),
+                        gas: TRANSFER_BALANCE.into(),
+                        gas_price: 1.into(),
+                        action: Call(account_vec[receiver_index].address()),
+                        value: TRANSFER_BALANCE.into(),
+                        data: Bytes::new(),
+                    };
+                    *sender_nonce += 1;
+                    balance_vec[sender_index] -= TRANSFER_BALANCE;
+                    balance_vec[receiver_index] += TRANSFER_BALANCE - 21000;
+                    let sender = epoch_tx_sender.clone();
+                    let secret = account_vec[sender_index].secret().clone();
+                    thread_pool.execute(move || {
+                        let signed = tx.sign(&secret);
+                        sender.send((i, signed));
+                    });
+                }
+                let mut tx_vec: Vec<(usize, SignedTransaction)> = epoch_tx_receiver.iter().take(n_tx_epoch).collect();
+                tx_vec.sort_by(|e1, e2| e1.0.partial_cmp(&e2.0).unwrap());
+                let sorted_tx_vec: Vec<SignedTransaction> = tx_vec.iter().map(|e| e.1.clone()).collect();
+                n_tx -= n_tx_epoch;
+                println!("sign_elapsed = {:?}", sign_start.elapsed());
+                tx_sender.send(Some(sorted_tx_vec));
+            }
+        }
+        tx_sender.send(None);
+    });
+
+
     let spec = Spec::new_spec();
     let machine = new_machine_with_builtin();
     let mut epoch = checkpoint;
     let mut env = Env::default();
     env.gas_limit = (tx_per_epoch * 21000).into();
-
-    let rounds: usize = arg_val(&matches, "rounds");
-    for _ in 0..rounds {
-        let mut n_tx = total_n_tx;
-        let mut epoch_tx_vec = Vec::new();
-        let sign_start = Instant::now();
-        while n_tx != 0 {
-            let n_tx_epoch = min(n_tx, tx_per_epoch);
-            let mut tx_vec = Vec::new();
-            for _ in 0..n_tx_epoch {
-                let sender_index = rng.next_u32() as usize % account_vec.len();
-                let receiver_index = rng.next_u32() as usize % account_vec.len();
-                let mut sender_nonce = nonce_vec.get_mut(sender_index).unwrap();
-                let tx = Transaction {
-                    nonce: (*sender_nonce).into(),
-                    gas: TRANSFER_BALANCE.into(),
-                    gas_price: 1.into(),
-                    action: Call(account_vec[receiver_index].address()),
-                    value: TRANSFER_BALANCE.into(),
-                    data: Bytes::new(),
-                };
-                let signed_tx = tx.sign(account_vec[sender_index].secret());
-                *sender_nonce += 1;
-                balance_vec[sender_index] -= TRANSFER_BALANCE;
-                balance_vec[receiver_index] += TRANSFER_BALANCE - 21000;
-                tx_vec.push(signed_tx);
-            }
-            println!("sign_elapsed = {:?}", sign_start.elapsed());
-            epoch_tx_vec.push(tx_vec);
-            n_tx -= n_tx_epoch;
+    let start = Instant::now();
+    let mut n_tx = total_n_tx;
+    for tx_vec_opt in tx_receiver {
+        if tx_vec_opt.is_none() {
+            break;
         }
-
-        let start = Instant::now();
-        n_tx = total_n_tx;
-        for tx_vec in epoch_tx_vec {
-            let state_index = StateIndex::new_for_test_only_delta_mpt(&epoch);
-            let mut state = State::new(StateDb::new(state_manager.get_state_for_next_epoch(state_index).unwrap().unwrap()), 0.into(), VmFactory::default());
-            let epoch_start = Instant::now();
-            for signed_tx in &tx_vec {
-                let mut nonce_increased = false;
-                let r = Executive::new(&mut state, &env, &machine, &spec)
-                    .transact(signed_tx, &mut nonce_increased);
-                assert!(r.is_ok() && nonce_increased == true);
-            }
-            n_tx -= tx_vec.len();
-            let progress = (total_n_tx - n_tx) * 100 / total_n_tx;
-            println!(
-                "{} tx executed, progress = {}%, elapsed = {:?}",
-                tx_vec.len(),
-                progress,
-                epoch_start.elapsed()
-            );
-
-            let commit_start = Instant::now();
-            epoch = H256::random();
-            state.commit(epoch);
-            println!("commit_elapsed = {:?}", commit_start.elapsed());
+        let tx_vec = tx_vec_opt.unwrap();
+        let state_index = StateIndex::new_for_test_only_delta_mpt(&epoch);
+        let mut state = State::new(StateDb::new(state_manager.get_state_for_next_epoch(state_index).unwrap().unwrap()), 0.into(), VmFactory::default());
+        let epoch_start = Instant::now();
+        for signed_tx in &tx_vec {
+            let mut nonce_increased = false;
+            let r = Executive::new(&mut state, &env, &machine, &spec)
+                .transact(signed_tx, &mut nonce_increased);
+            assert!(r.is_ok() && nonce_increased == true);
         }
-        println!("{} tx executed in total, elapsed = {:?} tps = {}", total_n_tx, start.elapsed(), total_n_tx as u64 / start.elapsed().as_secs());
+        n_tx -= tx_vec.len();
+        let progress = (total_n_tx - n_tx) * 100 / total_n_tx;
+        println!(
+            "{} tx executed, progress = {}%, elapsed = {:?}",
+            tx_vec.len(),
+            progress,
+            epoch_start.elapsed()
+        );
+
+        let commit_start = Instant::now();
+        epoch = H256::random();
+        state.commit(epoch);
+        println!("commit_elapsed = {:?}", commit_start.elapsed());
     }
+    println!("{} tx executed in total, elapsed = {:?} tps = {}", total_n_tx, start.elapsed(), total_n_tx as u64 / start.elapsed().as_secs());
 
     Ok(())
 }
@@ -172,7 +180,7 @@ fn parse_args<'a>() -> ArgMatches<'a> {
                 .takes_value(true)
                 .value_name("NUM")
                 .help("Number of transactions executed in total")
-                .default_value("1000000")
+                .default_value("10000000")
         )
         .arg(
             Arg::with_name("tx-per-epoch")
@@ -186,7 +194,7 @@ fn parse_args<'a>() -> ArgMatches<'a> {
                 .long("cache-size")
                 .takes_value(true)
                 .help("The number of cached node in storage")
-                .default_value("50000")
+                .default_value("20000000")
         )
         .arg(
             Arg::with_name("rounds")

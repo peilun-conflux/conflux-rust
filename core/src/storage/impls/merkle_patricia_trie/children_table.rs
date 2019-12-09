@@ -80,12 +80,11 @@ where ChildrenTableItem<NodeRefT>: DefaultChildrenItem<NodeRefT>
     }
 }
 
-impl<NodeRefT: 'static + NodeRefTrait> VanillaChildrenTable<NodeRefT>
-where ChildrenTableItem<NodeRefT>: DefaultChildrenItem<NodeRefT>
-{
+impl<NodeRefT: 'static + NodeRefTrait> VanillaChildrenTable<NodeRefT> {
     // FIXME: put most method in a trait.
 
-    pub fn new_from_one_child(child_index: u8, child: &NodeRefT) -> Self {
+    pub fn new_from_one_child(child_index: u8, child: &NodeRefT) -> Self
+    where ChildrenTableItem<NodeRefT>: DefaultChildrenItem<NodeRefT> {
         let mut table = VanillaChildrenTable::default();
         table.children_count = 1;
         table.table[child_index as usize] = child.clone();
@@ -98,11 +97,12 @@ where ChildrenTableItem<NodeRefT>: DefaultChildrenItem<NodeRefT>
 
     pub fn get_children_count(&self) -> u8 { self.children_count }
 
-    pub fn get_children_count_mut(&mut self) -> &mut u8 {
+    pub unsafe fn get_children_count_mut(&mut self) -> &mut u8 {
         &mut self.children_count
     }
 
-    pub fn get_child(&self, child_index: u8) -> Option<&NodeRefT> {
+    pub fn get_child(&self, child_index: u8) -> Option<&NodeRefT>
+    where ChildrenTableItem<NodeRefT>: DefaultChildrenItem<NodeRefT> {
         let child_ref =
             unsafe { self.table.get_unchecked(child_index as usize) };
         if child_ref.eq(ChildrenTableItem::<NodeRefT>::no_child()) {
@@ -214,10 +214,6 @@ pub struct CompactedChildrenTable<NodeRefT: NodeRefTrait> {
 
 pub const CHILDREN_COUNT: usize = 16;
 
-impl NodeRefTrait for NodeRefDeltaMptCompact {}
-pub type ChildrenTableDeltaMpt = CompactedChildrenTable<NodeRefDeltaMptCompact>;
-pub type ChildrenTableManagedDeltaMpt = ChildrenTable<NodeRefDeltaMptCompact>;
-
 impl<NodeRefT: NodeRefTrait> Default for CompactedChildrenTable<NodeRefT> {
     fn default() -> Self {
         Self {
@@ -252,9 +248,15 @@ impl<NodeRefT: NodeRefTrait> CompactedChildrenTable<NodeRefT> {
         }
     }
 
+    pub unsafe fn get_child_mut_unchecked(
+        &mut self, index: u8,
+    ) -> &mut NodeRefT {
+        &mut *self.table_ptr.add(Self::lower_bound(self.bitmap, index))
+    }
+
     /// Unsafe because child must already exist at the index.
     pub unsafe fn set_child_unchecked(&mut self, index: u8, value: NodeRefT) {
-        (*self.table_ptr.add(Self::lower_bound(self.bitmap, index))) =
+        *self.table_ptr.add(Self::lower_bound(self.bitmap, index)) =
             value.clone();
     }
 
@@ -840,9 +842,8 @@ impl<NodeRefT: NodeRefTrait> Decodable for ChildrenTable<NodeRefT> {
 }
 
 use super::{
+    super::super::utils::WrappedCreateFrom,
     merkle::{ChildrenMerkleTable, MaybeMerkleTable},
-    node_ref::NodeRefDeltaMptCompact,
-    WrappedCreateFrom,
 };
 use primitives::{MerkleHash, MERKLE_NULL_NODE};
 use rlp::*;

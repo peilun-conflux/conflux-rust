@@ -11,10 +11,11 @@ pub struct State<'a> {
     snapshot_db: SnapshotDb,
     maybe_intermediate_trie: Option<Arc<DeltaMpt>>,
     intermediate_trie_root: Option<NodeRefDeltaMpt>,
-    maybe_intermediate_trie_key_padding: Option<KeyPadding>,
+    intermediate_trie_root_merkle: MerkleHash,
+    maybe_intermediate_trie_key_padding: Option<DeltaMptKeyPadding>,
     delta_trie: Arc<DeltaMpt>,
     delta_trie_root: Option<NodeRefDeltaMpt>,
-    delta_trie_key_padding: KeyPadding,
+    delta_trie_key_padding: DeltaMptKeyPadding,
     intermediate_epoch_id: EpochId,
     delta_trie_height: Option<u32>,
     height: Option<u64>,
@@ -37,6 +38,8 @@ impl<'a> State<'a> {
             snapshot_db: state_trees.snapshot_db,
             maybe_intermediate_trie: state_trees.maybe_intermediate_trie,
             intermediate_trie_root: state_trees.intermediate_trie_root,
+            intermediate_trie_root_merkle: state_trees
+                .intermediate_trie_root_merkle,
             maybe_intermediate_trie_key_padding: state_trees
                 .maybe_intermediate_trie_key_padding,
             delta_trie: state_trees.delta_trie,
@@ -139,14 +142,16 @@ impl<'a> State<'a> {
                 }
             };
 
-        // TODO: get from snapshot
-        // self.get_from_snapshot(access_key)
+        let maybe_value = self.get_from_snapshot(&access_key.to_key_bytes())?;
+        if with_proof {
+            // FIMXE: implement snapshot proof.
+        }
 
         let proof = StateProof::default()
             .with_delta(maybe_delta_proof)
             .with_intermediate(maybe_intermediate_proof);
 
-        Ok((None, proof))
+        Ok((maybe_value, proof))
     }
 }
 
@@ -173,7 +178,7 @@ impl<'a> StateTrait for State<'a> {
     fn set(&mut self, access_key: StorageKey, value: Box<[u8]>) -> Result<()> {
         self.pre_modification();
 
-        let root_node = self.get_or_create_root_node()?;
+        let root_node = self.get_or_create_delta_root_node()?;
         self.delta_trie_root = SubTrieVisitor::new(
             &self.delta_trie,
             root_node,
@@ -238,19 +243,15 @@ impl<'a> StateTrait for State<'a> {
 
         Ok(StateRootWithAuxInfo {
             state_root: StateRoot {
-                // FIXME: is it better to calc it here or at construction?
                 snapshot_root: self
                     .snapshot_db
                     .get_snapshot_info()
                     .merkle_root
                     .clone(),
-                // FIXME: fill in the intermediate delta root.
-                // FIXME: is it better to calc it here or at construction?
-                intermediate_delta_root: MERKLE_NULL_NODE,
+                intermediate_delta_root: self.intermediate_trie_root_merkle,
                 delta_root: merkle_root,
             },
             aux_info: StateRootAuxInfo {
-                // FIXME: is it better to calc it here or at construction?
                 snapshot_epoch_id: self
                     .snapshot_db
                     .get_snapshot_info()
@@ -274,10 +275,7 @@ impl<'a> StateTrait for State<'a> {
                     .get_snapshot_info()
                     .merkle_root
                     .clone(),
-                // FIXME: implement for intermediate_delta_root.
-                // FIXME: get_intermediate_root.. also update the other place
-                // when getting state trees.
-                intermediate_delta_root: MERKLE_NULL_NODE,
+                intermediate_delta_root: self.intermediate_trie_root_merkle,
                 delta_root: merkle_hash,
             },
             aux_info: StateRootAuxInfo {
@@ -348,7 +346,7 @@ impl<'a> State<'a> {
         self.delta_trie_root.clone()
     }
 
-    pub fn get_or_create_root_node(&mut self) -> Result<NodeRefDeltaMpt> {
+    fn get_or_create_delta_root_node(&mut self) -> Result<NodeRefDeltaMpt> {
         if self.delta_trie_root.is_none() {
             let allocator =
                 self.delta_trie.get_node_memory_manager().get_allocator();
@@ -543,35 +541,35 @@ impl<'a> State<'a> {
     pub fn dump<DUMPER: KVInserter<(Vec<u8>, Box<[u8]>)>>(
         &self, dumper: &mut DUMPER,
     ) -> Result<()> {
-        let inserter = DeltaMptInserter {
+        let inserter = DeltaMptIterator {
             maybe_mpt: Some(self.delta_trie.clone()),
             maybe_root_node: self.delta_trie_root.clone(),
         };
 
         inserter.iterate(dumper)
     }
+
+    /// FIXME This is for test only.
+    pub fn get_delta_trie(&self) -> Arc<DeltaMpt> { self.delta_trie.clone() }
 }
 
 use super::{
     super::{
-        state::*, state_manager::*, storage_db::*, storage_key::*,
-        StateRootAuxInfo, StateRootWithAuxInfo,
+        state::*, state_manager::*, storage_db::*, StateRootAuxInfo,
+        StateRootWithAuxInfo,
     },
+    delta_mpt::{node_memory_manager::ActualSlabIndex, *},
     errors::*,
-    multi_version_merkle_patricia_trie::{
-        merkle_patricia_trie::{
-            children_table::VanillaChildrenTable, cow_node_ref::KVInserter, *,
-        },
-        node_memory_manager::ActualSlabIndex,
-        DeltaMpt, TrieProof,
-    },
-    owned_node_set::OwnedNodeSet,
+    merkle_patricia_trie::{KVInserter, TrieProof, VanillaChildrenTable},
     state_manager::*,
     state_proof::StateProof,
-    storage_manager::DeltaMptInserter,
+    storage_manager::DeltaMptIterator,
 };
 use parity_bytes::ToPretty;
-use primitives::{EpochId, MerkleHash, StateRoot, MERKLE_NULL_NODE};
+use primitives::{
+    DeltaMptKeyPadding, EpochId, MerkleHash, StateRoot, StorageKey,
+    MERKLE_NULL_NODE,
+};
 use std::{
     cell::UnsafeCell,
     collections::BTreeMap,

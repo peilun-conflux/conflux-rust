@@ -18,7 +18,7 @@ use crate::{
     vm_factory::VmFactory,
     SharedTransactionPool,
 };
-use cfx_types::{BigEndianHash, H256, KECCAK_EMPTY_BLOOM, U256, U512};
+use cfx_types::{Address, BigEndianHash, H256, KECCAK_EMPTY_BLOOM, U256, U512};
 use core::convert::TryFrom;
 use hash::KECCAK_EMPTY_LIST_RLP;
 use metrics::{register_meter_with_group, Meter, MeterTimer};
@@ -30,10 +30,11 @@ use primitives::{
         TRANSACTION_OUTCOME_EXCEPTION_WITH_NONCE_BUMPING,
         TRANSACTION_OUTCOME_SUCCESS,
     },
-    Block, BlockHeaderBuilder, SignedTransaction, TransactionAddress,
-    MERKLE_NULL_NODE,
+    Block, BlockHeader, BlockHeaderBuilder, SignedTransaction,
+    TransactionAddress, MERKLE_NULL_NODE,
 };
 use std::{
+    cmp::max,
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     convert::From,
     fmt::{Debug, Formatter},
@@ -63,6 +64,9 @@ pub struct RewardExecutionInfo {
     pub epoch_blocks: Vec<Arc<Block>>,
     pub epoch_block_no_reward: Vec<bool>,
     pub epoch_block_anticone_difficulties: Vec<U512>,
+    /// This block is used to estimate interest rate in current epoch. Usually,
+    /// it is a pivot block and it is 100 epochs before current epoch.
+    pub interest_rate_est_block_header: Arc<BlockHeader>,
 }
 
 impl Debug for RewardExecutionInfo {
@@ -324,7 +328,7 @@ impl ConsensusExecutor {
                 let height = inner.arena[pivot_arena_index].height;
                 if !self.consensus_graph_bench_mode
                 {
-                    info!(
+                    debug!(
                         "wait_and_compute_state_valid_locked, idx = {}, \
                          height = {}, era stable height = {}",
                         pivot_arena_index, height, inner.cur_era_stable_height
@@ -335,6 +339,23 @@ impl ConsensusExecutor {
                     )
                     .unwrap();
                 }
+
+                let interest_rate_est_block_height = if height > 100 {
+                   height - 100
+                } else {
+                    1
+                };
+
+                let interest_rate_est_block_hash = if interest_rate_est_block_height < inner.cur_era_genesis_height {
+                    let mut block_hash = inner.arena[inner.cur_era_genesis_block_arena_index].hash;
+                    for _ in 0..inner.cur_era_genesis_height - interest_rate_est_block_height {
+                        block_hash = *inner.data_man.block_header_by_hash(&block_hash).expect("block header must exists").parent_hash();
+                    }
+                    block_hash
+                } else {
+                    inner.arena[inner.pivot_chain[inner.height_to_pivot_index(interest_rate_est_block_height)]].hash
+                };
+                let interest_rate_est_block_header = inner.data_man.block_header_by_hash(&interest_rate_est_block_hash).expect("interest_rate_est_block must exist");
 
                 let epoch_blocks =
                     inner.get_executable_epoch_blocks(pivot_arena_index);
@@ -450,6 +471,7 @@ impl ConsensusExecutor {
                     epoch_blocks,
                     epoch_block_no_reward,
                     epoch_block_anticone_difficulties,
+                    interest_rate_est_block_header,
                 }
             },
         )
@@ -1121,6 +1143,11 @@ impl ConsensusExecutionHandler {
 
         let epoch_size = epoch_blocks.len();
         let mut epoch_block_total_rewards = Vec::with_capacity(epoch_size);
+        // This maintains the primary tokens rewarded to each miner. And it will
+        // be used to compute ratio for secondary reward.
+        let mut base_reward_count: HashMap<Address, U256> = HashMap::new();
+        // This is the total primary tokens issued in this epoch.
+        let mut total_base_reward: U256 = 0.into();
 
         // Base reward and anticone penalties.
         for (enum_idx, block) in epoch_blocks.iter().enumerate() {
@@ -1189,9 +1216,44 @@ impl ConsensusExecutionHandler {
                 }
 
                 debug_assert!(reward <= U512::from(U256::max_value()));
-                epoch_block_total_rewards.push(U256::try_from(reward).unwrap());
+                let reward = U256::try_from(reward).unwrap();
+                epoch_block_total_rewards.push(reward);
+                if !reward.is_zero() {
+                    *base_reward_count
+                        .entry(*block.block_header.author())
+                        .or_insert(0.into()) += reward;
+                    total_base_reward += reward;
+                }
             }
         }
+
+        let epoch_delta = max(
+            1,
+            pivot_block.block_header.height()
+                - reward_info.interest_rate_est_block_header.height(),
+        );
+        let timestamp_delta = pivot_block.block_header.timestamp()
+            - reward_info.interest_rate_est_block_header.timestamp();
+
+        // Use actutal time to calculate the interest
+        let interest_rate = state.interest_rate() * U256::from(timestamp_delta)
+            / U256::from(epoch_delta)
+            / U256::from(SECONDS_PER_YEAR);
+        // Calculate the new total tokens.
+        let total_tokens = state.total_tokens()
+            + state.total_bank_tokens() * interest_rate
+                / U256::from(INTEREST_RATE_SCALE)
+            + total_base_reward;
+        state.set_total_tokens(total_tokens);
+
+        // Calculate the new accumulate interest rate.
+        let accumulate_interest_rate =
+            state.accumulate_interest_rate() + interest_rate;
+        state.set_accumulate_interest_rate(accumulate_interest_rate);
+
+        // Calculate
+        let secondary_reward = state.total_storage_tokens() * interest_rate
+            / U256::from(INTEREST_RATE_SCALE);
 
         // Tx fee for each block in this epoch
         let mut tx_fee = HashMap::new();
@@ -1314,7 +1376,11 @@ impl ConsensusExecutionHandler {
 
         debug!("Give rewards merged_reward={:?}", merged_rewards);
 
-        for (address, reward) in merged_rewards {
+        for (address, mut reward) in merged_rewards {
+            // Distribute the secondary reward according to primary reward.
+            if let Some(base_reward) = base_reward_count.get(&address) {
+                reward += base_reward * secondary_reward / total_base_reward;
+            }
             state
                 .add_balance(&address, &reward, CleanupMode::ForceCreate)
                 .unwrap();

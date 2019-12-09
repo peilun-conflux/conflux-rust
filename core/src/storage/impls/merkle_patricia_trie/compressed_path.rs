@@ -12,6 +12,13 @@ pub trait CompressedPathTrait {
         self.path_size() * 2 - (self.end_mask() != 0) as u16
     }
 
+    fn as_ref(&self) -> CompressedPathRef {
+        CompressedPathRef {
+            path_slice: self.path_slice(),
+            end_mask: self.end_mask(),
+        }
+    }
+
     // TODO(yz): the format can be optimized to save 1 or 2 bytes: a string with
     // 0 prefix means path_slice with even length, a string with 1 prefix
     // means path_slice with odd length.
@@ -25,16 +32,31 @@ pub trait CompressedPathTrait {
     }
 }
 
+impl CompressedPathTrait for [u8] {
+    fn path_slice(&self) -> &[u8] { self }
+
+    fn end_mask(&self) -> u8 { 0 }
+}
+
 impl<'a> CompressedPathTrait for &'a [u8] {
     fn path_slice(&self) -> &[u8] { self }
 
     fn end_mask(&self) -> u8 { 0 }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct CompressedPathRef<'a> {
-    pub(super) path_slice: &'a [u8],
-    pub(super) end_mask: u8,
+    path_slice: &'a [u8],
+    end_mask: u8,
+}
+
+impl<'a> CompressedPathRef<'a> {
+    pub fn new(path_slice: &'a [u8], end_mask: u8) -> Self {
+        Self {
+            path_slice,
+            end_mask,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -264,6 +286,12 @@ impl PartialEq<Self> for CompressedPathRaw {
     fn eq(&self, other: &Self) -> bool { self.as_ref().eq(&other.as_ref()) }
 }
 
+impl Eq for CompressedPathRaw {}
+
+impl Hash for CompressedPathRaw {
+    fn hash<H: Hasher>(&self, state: &mut H) { self.as_ref().hash(state) }
+}
+
 impl Debug for CompressedPathRaw {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         self.as_ref().fmt(f)
@@ -271,21 +299,32 @@ impl Debug for CompressedPathRaw {
 }
 
 impl CompressedPathRaw {
-    pub fn as_ref(&self) -> CompressedPathRef {
-        CompressedPathRef {
-            path_slice: self.path_slice(),
-            end_mask: self.end_mask,
-        }
-    }
-
     pub fn path_slice_mut(&mut self) -> &mut [u8] {
         self.path.get_slice_mut(self.path_size as usize)
     }
 }
 
+impl<'a> PartialEq<Self> for dyn CompressedPathTrait + 'a {
+    fn eq(&self, other: &(dyn CompressedPathTrait + 'a)) -> bool {
+        self.as_ref().eq(&other.as_ref())
+    }
+}
+
+impl<'a> Eq for dyn CompressedPathTrait + 'a {}
+
+impl<'a> Hash for dyn CompressedPathTrait + 'a {
+    fn hash<H: Hasher>(&self, state: &mut H) { self.as_ref().hash(state) }
+}
+
+impl<'a> Borrow<dyn CompressedPathTrait + 'a> for CompressedPathRaw {
+    fn borrow(&self) -> &(dyn CompressedPathTrait + 'a) { self }
+}
+
 use super::maybe_in_place_byte_array::*;
 use rlp::*;
 use std::{
+    borrow::Borrow,
     fmt::{Debug, Error, Formatter},
+    hash::{Hash, Hasher},
     result::Result,
 };

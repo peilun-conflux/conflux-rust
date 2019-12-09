@@ -15,7 +15,7 @@ use crate::{
 };
 use cfx_types::{Address, H256, U256, U512};
 use primitives::{transaction::Action, SignedTransaction};
-use std::{cmp, convert::TryFrom, sync::Arc};
+use std::{cmp, convert::TryFrom, str::FromStr, sync::Arc};
 //use crate::storage::{Storage, StorageTrait};
 //use crate::transaction_pool::SharedTransactionPool;
 use crate::{
@@ -26,6 +26,9 @@ use crate::{
     },
     vm_factory::VmFactory,
 };
+
+pub const STORAGE_INTEREST_STAKING_CONTRACT_ADDRESS: &str =
+    "443c409373ffd5c0bec1dddb7bec830856757b65";
 
 /// Returns new address created from address, nonce, and code hash
 pub fn contract_address(
@@ -107,6 +110,7 @@ pub fn into_contract_create_result(
 enum CallCreateExecutiveKind {
     Transfer(ActionParams),
     CallBuiltin(ActionParams),
+    CallInternalContract(ActionParams),
     ExecCall(ActionParams, Substate),
     ExecCreate(ActionParams, Substate),
     ResumeCall(OriginInfo, Box<dyn ResumeCall>, Substate),
@@ -156,6 +160,12 @@ impl<'a> CallCreateExecutive<'a> {
             }
             trace!("CallBuiltin");
             CallCreateExecutiveKind::CallBuiltin(params)
+        } else if params.code_address
+            == Address::from_str(STORAGE_INTEREST_STAKING_CONTRACT_ADDRESS)
+                .unwrap()
+        {
+            info!("CallInternalContract: {:?}", params.data);
+            CallCreateExecutiveKind::CallInternalContract(params)
         } else {
             if params.code.is_some() {
                 trace!("ExecCall");
@@ -226,7 +236,8 @@ impl<'a> CallCreateExecutive<'a> {
                 Some(unsub)
             }
             CallCreateExecutiveKind::Transfer(..)
-            | CallCreateExecutiveKind::CallBuiltin(..) => None,
+            | CallCreateExecutiveKind::CallBuiltin(..)
+            | CallCreateExecutiveKind::CallInternalContract(..) => None,
         }
     }
 
@@ -267,6 +278,33 @@ impl<'a> CallCreateExecutive<'a> {
         Ok(())
     }
 
+    fn deposit<'b: 'a>(
+        params: &ActionParams, state: &mut State<'b>, val: &U256,
+    ) -> vm::Result<()> {
+        if state.balance(&params.sender)? < *val {
+            Err(vm::Error::InternalContract("not enough balance to deposit"))
+        } else {
+            state.deposit(&params.sender, &val)?;
+            Ok(())
+        }
+    }
+
+    fn withdraw<'b: 'a>(
+        params: &ActionParams, state: &mut State<'b>, val: &U256,
+    ) -> vm::Result<()> {
+        if state.bank_balance(&params.sender)?
+            - state.storage_balance(&params.sender)?
+            < *val
+        {
+            Err(vm::Error::InternalContract(
+                "not enough bank balance to withdraw",
+            ))
+        } else {
+            state.withdraw(&params.sender, &val)?;
+            Ok(())
+        }
+    }
+
     fn transfer_exec_balance_and_init_contract<'b: 'a>(
         params: &ActionParams, spec: &Spec, state: &mut State<'b>,
         substate: &mut Substate,
@@ -299,6 +337,7 @@ impl<'a> CallCreateExecutive<'a> {
             | Err(vm::Error::BadInstruction { .. })
             | Err(vm::Error::StackUnderflow { .. })
             | Err(vm::Error::BuiltIn { .. })
+            | Err(vm::Error::InternalContract { .. })
             | Err(vm::Error::Wasm { .. })
             | Err(vm::Error::OutOfStack { .. })
             | Err(vm::Error::MutableCallInStaticContext)
@@ -310,8 +349,12 @@ impl<'a> CallCreateExecutive<'a> {
                 state.revert_to_checkpoint();
             }
             Ok(_) | Err(vm::Error::Internal(_)) => {
-                state.discard_checkpoint();
-                substate.accrue(unconfirmed_substate);
+                if state.check_storage_balance() {
+                    state.discard_checkpoint();
+                    substate.accrue(unconfirmed_substate);
+                } else {
+                    state.revert_to_checkpoint();
+                }
             }
         }
     }
@@ -411,6 +454,94 @@ impl<'a> CallCreateExecutive<'a> {
                                 gas_left: params.gas - cost,
                                 return_data: ReturnData::new(
                                     builtin_out_buffer,
+                                    0,
+                                    out_len,
+                                ),
+                                apply_state: true,
+                            })
+                        }
+                    } else {
+                        state.revert_to_checkpoint();
+                        Err(vm::Error::OutOfGas)
+                    }
+                };
+
+                Ok(inner())
+            }
+
+            CallCreateExecutiveKind::CallInternalContract(ref params) => {
+                assert!(!self.is_create);
+
+                let mut inner = || {
+                    if params.call_type != CallType::Call {
+                        return Err(vm::Error::InternalContract(
+                            "Incorrect call type.",
+                        ));
+                    }
+
+                    Self::check_static_flag(
+                        &params,
+                        self.static_flag,
+                        self.is_create,
+                    )?;
+                    state.checkpoint();
+                    Self::transfer_exec_balance(
+                        &params, self.spec, state, substate,
+                    )?;
+
+                    let data = if let Some(ref d) = params.data {
+                        d as &[u8]
+                    } else {
+                        return Err(vm::Error::InternalContract(
+                            "invalid data",
+                        ));
+                    };
+                    // According to https://solidity.readthedocs.io/en/develop/abi-spec.html
+                    // data is 4 bytes `Method ID` + 32 bytes parameter.
+                    if data.len() != 36 {
+                        return Err(vm::Error::InternalContract(
+                            "invalid data",
+                        ));
+                    }
+
+                    // FIXME: Implement the correct pricer!
+                    let cost = U256::zero();
+                    let value = U256::from(&data[4..]);
+                    if cost <= params.gas {
+                        let internal_contract_out_buffer = Vec::new();
+                        let result: vm::Result<()> = {
+                            if data[0] == 182
+                                && data[1] == 181
+                                && data[2] == 95
+                                && data[3] == 37
+                            {
+                                // first 4 byts of  keccak('deposit(uint256)')
+                                // is `0xb6b55f25`
+                                Self::deposit(params, state, &value)
+                            } else if data[0] == 46
+                                && data[1] == 26
+                                && data[2] == 125
+                                && data[3] == 77
+                            {
+                                // first 4 byts of  keccak('withdraw(uint256)')
+                                // is `0x2e1a7d4d`
+                                Self::withdraw(params, state, &value)
+                            } else {
+                                Ok(())
+                            }
+                        };
+                        // FIXME: correct handling of error
+                        if let Err(e) = result {
+                            state.revert_to_checkpoint();
+                            Err(e.into())
+                        } else {
+                            state.discard_checkpoint();
+
+                            let out_len = internal_contract_out_buffer.len();
+                            Ok(FinalizationResult {
+                                gas_left: params.gas - cost,
+                                return_data: ReturnData::new(
+                                    internal_contract_out_buffer,
                                     0,
                                     out_len,
                                 ),
@@ -659,6 +790,7 @@ impl<'a> CallCreateExecutive<'a> {
             }
             CallCreateExecutiveKind::Transfer(..)
             | CallCreateExecutiveKind::CallBuiltin(..)
+            | CallCreateExecutiveKind::CallInternalContract(..)
             | CallCreateExecutiveKind::ExecCall(..)
             | CallCreateExecutiveKind::ExecCreate(..) => {
                 panic!("Not resumable")
@@ -733,6 +865,7 @@ impl<'a> CallCreateExecutive<'a> {
             }
             CallCreateExecutiveKind::Transfer(..)
             | CallCreateExecutiveKind::CallBuiltin(..)
+            | CallCreateExecutiveKind::CallInternalContract(..)
             | CallCreateExecutiveKind::ExecCall(..)
             | CallCreateExecutiveKind::ExecCreate(..) => {
                 panic!("Not resumable")
@@ -1120,6 +1253,7 @@ impl<'a, 'b> Executive<'a, 'b> {
                     call_type: CallType::Call,
                     params_type: vm::ParamsType::Separate,
                 };
+
                 let res = self.call(params, &mut substate);
                 let out = match &res {
                     Ok(res) => res.return_data.to_vec(),
@@ -1249,6 +1383,7 @@ mod tests {
     use crate::{
         evm::{Factory, VMType},
         machine::Machine,
+        parameters::consensus_internal::CONFLUX_TOKEN,
         state::{CleanupMode, State, Substate},
         statedb::StateDb,
         storage::{
@@ -1310,12 +1445,21 @@ mod tests {
         let mut params = ActionParams::default();
         params.address = address.clone();
         params.sender = sender.clone();
+        params.origin = sender.clone();
         params.gas = U256::from(100_000);
         params.code = Some(Arc::new("3331600055".from_hex().unwrap()));
         params.value = ActionValue::Transfer(U256::from(0x7));
         let storage_manager = new_state_manager_for_testing();
         let mut state =
             get_state_for_genesis_write_with_factory(&storage_manager, factory);
+        state
+            .add_balance(
+                &sender,
+                &U256::from(CONFLUX_TOKEN),
+                CleanupMode::NoEmpty,
+            )
+            .ok();
+        state.deposit(&sender, &U256::from(CONFLUX_TOKEN)).ok();
         state
             .add_balance(&sender, &U256::from(0x100u64), CleanupMode::NoEmpty)
             .unwrap();
