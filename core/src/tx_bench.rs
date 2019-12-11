@@ -97,7 +97,7 @@ fn main() -> Result<(), Error> {
                     });
                 }
                 let mut tx_vec: Vec<(usize, SignedTransaction)> = epoch_tx_receiver.iter().take(n_tx_epoch).collect();
-                tx_vec.sort_by(|e1, e2| e1.0.partial_cmp(&e2.0).unwrap());
+                tx_vec.sort_by(|e1, e2| e1.0.cmp(&e2.0));
                 let sorted_tx_vec: Vec<SignedTransaction> = tx_vec.iter().map(|e| e.1.clone()).collect();
                 n_tx -= n_tx_epoch;
                 tx_sender.send(Some(sorted_tx_vec));
@@ -126,7 +126,7 @@ fn main() -> Result<(), Error> {
             let mut nonce_increased = false;
             let r = Executive::new(&mut state, &env, &machine, &spec)
                 .transact(signed_tx, &mut nonce_increased);
-            assert!(r.is_ok() && nonce_increased == true);
+            assert!(r.is_ok() && nonce_increased == true, "r={:?}, nonce_increased={:?}", r, nonce_increased);
         }
         n_tx -= tx_vec.len();
         let progress = (total_n_tx - n_tx) * 100 / total_n_tx;
