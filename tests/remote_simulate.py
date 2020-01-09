@@ -26,7 +26,7 @@ FIXME: Describe this class.
 class RemoteSimulate(ConfluxTestFramework):
     def set_test_params(self):
         self.setup_clean_chain = True
-        self.rpc_timewait = 60
+        self.rpc_timewait = 60000
         # Have to have a num_nodes due to assert in base class.
         self.num_nodes = None
 
@@ -34,7 +34,7 @@ class RemoteSimulate(ConfluxTestFramework):
         # Bandwidth in Mbit/s
         bandwidth = 20,
         connect_peers = 3,
-        enable_flamegraph = False,
+        profiler = "",
         enable_tx_propagation = False,
         ips_file = "ips",
         generation_period_ms = 500,
@@ -101,6 +101,15 @@ class RemoteSimulate(ConfluxTestFramework):
         else:
             self.conf_parameters["send_tx_period_ms"] = "31536000000" # one year to disable txs propagation
 
+        self.conf_parameters["start_mining"] = "true"
+        self.conf_parameters["mining_author"] = '"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"'
+        self.conf_parameters["initial_difficulty"] = "2000000"
+        self.conf_parameters["era_epoch_count"] = "2000"
+        self.conf_parameters["timer_chain_beta"] = "20"
+        self.conf_parameters["adaptive_weight_beta"] = "100"
+        self.conf_parameters["dev_snapshot_epoch_count"] = "1000"
+        self.conf_parameters["enable_discovery"] = "true"
+
     def stop_nodes(self):
         kill_remote_conflux(self.options.ips_file)
 
@@ -119,9 +128,9 @@ class RemoteSimulate(ConfluxTestFramework):
         cmd_kill_conflux = "killall -9 conflux || echo already killed"
         cmd_cleanup = "rm -rf /tmp/conflux_test_*"
         cmd_setup = "tar zxf conflux_conf.tgz -C /tmp"
-        cmd_startup = "./remote_start_conflux.sh {} {} {} {} {}&> start_conflux.out".format(
+        cmd_startup = "./remote_start_conflux.sh {} {} {} {} {} > start_conflux.out 2> stderr".format(
             self.options.tmpdir, p2p_port(0), self.options.nodes_per_host, 
-            self.options.bandwidth, str(self.options.enable_flamegraph).lower()
+            self.options.bandwidth, str(self.options.profiler).lower()
         )
         cmd = "{}; {} && {} && {}".format(cmd_kill_conflux, cmd_cleanup, cmd_setup, cmd_startup)
         pssh(self.options.ips_file, cmd, 3, "setup and run conflux on remote nodes")
@@ -139,7 +148,7 @@ class RemoteSimulate(ConfluxTestFramework):
         self.start_nodes()
         self.log.info("All nodes started, waiting to be connected")
 
-        connect_sample_nodes(self.nodes, self.log, sample=self.options.connect_peers, timeout=120)
+        connect_sample_nodes(self.nodes, self.log, sample=self.options.connect_peers, timeout=120, latency_min=299, latency_max=300)
 
         self.sync_blocks()
 
@@ -163,6 +172,8 @@ class RemoteSimulate(ConfluxTestFramework):
         # The monitor will check the block_count of nodes[0]
         monitor_thread = threading.Thread(target=self.monitor, args=(cur_block_count, 100), daemon=True)
         monitor_thread.start()
+        while True:
+            pass
 
         # generate blocks
         threads = {}
@@ -266,8 +277,7 @@ class RemoteSimulate(ConfluxTestFramework):
             # block count
             block_count = self.nodes[0].getblockcount()
             if block_count != pre_block_count:
-                gap = self.progress + cur_block_count - block_count
-                self.log.info("current blocks: %d (gaps: %d)", block_count, gap)
+                self.log.info("current blocks: %d", block_count)
                 pre_block_count = block_count
                 retry = 0
             else:

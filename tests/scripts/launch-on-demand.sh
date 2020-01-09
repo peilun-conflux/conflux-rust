@@ -9,11 +9,11 @@ if [ $# -lt 3 ]; then
 elif [ $# -eq 4 ]; then
     image="$4"
     type="m5.xlarge"
-    public=""
+    public="--public"
 elif [[ -f slave_image ]]; then
     image=`cat slave_image`
     type="m5.xlarge"
-    public=""
+    public="--public"
 else
     # create master instances
     image="ami-0ddab4a020ac57bd1" # experiment image
@@ -29,7 +29,7 @@ fi
 n=$1
 keypair=$2
 role=$3
-res=`aws ec2 run-instances --image-id $image --count $n --key-name $keypair --instance-type $type --security-group-ids sg-0345bbb6934681ea1 --subnet-id subnet-a5cfe3dc --block-device-mapping DeviceName=/dev/sda1,Ebs={VolumeSize=100} --tag-specifications "ResourceType=instance,Tags=[{Key=role,Value=$role},{Key=Name,Value=$type-$image}]"`
+res=`aws ec2 run-instances --image-id $image --count $n --key-name $keypair --instance-type $type --security-group-ids sg-0345bbb6934681ea1 --subnet-id subnet-a5cfe3dc --block-device-mapping DeviceName=/dev/sda1,Ebs={VolumeSize=1000} --tag-specifications "ResourceType=instance,Tags=[{Key=role,Value=$role},{Key=Name,Value=$type-$image}]"`
 echo $res | jq ".Instances[].InstanceId" | tr -d '"' > instances
 
 num_created=`cat instances | wc -l`

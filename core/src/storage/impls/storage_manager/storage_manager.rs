@@ -615,7 +615,7 @@ impl StorageManager {
     pub fn register_new_snapshot(
         &self, new_snapshot_info: SnapshotInfo,
     ) -> Result<()> {
-        debug!("register_new_snapshot: info={:?}", new_snapshot_info);
+        debug!("register_new_snapshot: height={}", new_snapshot_info.height);
         let snapshot_epoch_id = new_snapshot_info.get_snapshot_epoch_id();
         // Register intermediate MPT for the new snapshot.
         let mut snapshot_associated_mpts_locked =

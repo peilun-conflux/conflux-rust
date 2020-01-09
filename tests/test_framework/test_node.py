@@ -128,31 +128,32 @@ class TestNode:
         delete_cookie_file(self.datadir)
         my_env = os.environ.copy()
         my_env["RUST_BACKTRACE"] = "full"
-        if self.remote and self.no_pssh:
-            ssh_args = '-o "StrictHostKeyChecking no"'
-            cli_mkdir = "ssh {} {}@{} mkdir -p {};".format(
-                ssh_args, self.user, self.ip, self.datadir
-            )
-            cli_conf = "scp {3} -r {0} {1}@{2}:`dirname {0}`;".format(
-                self.datadir, self.user, self.ip, ssh_args
-            )
-            cli_kill = "ssh {}@{} killall conflux;".format(self.user, self.ip)
-            cli_exe = 'ssh {} {}@{} "{} > /dev/null"'.format(
-                ssh_args,
-                self.user,
-                self.ip,
-                "cd {} && export RUST_BACKTRACE=full && ".format(self.datadir)
-                + " ".join(self.args),
-                )
-            print(cli_mkdir + cli_kill + cli_conf + cli_exe)
-            self.process = subprocess.Popen(
-                cli_mkdir + cli_kill + cli_conf + cli_exe,
-                stdout=stdout,
-                stderr=stderr,
-                cwd=self.datadir,
-                shell=True,
-                **kwargs,
-                )
+        if self.remote:
+            pass
+            # ssh_args = '-o "StrictHostKeyChecking no"'
+            # cli_mkdir = "ssh {} {}@{} mkdir -p {};".format(
+            #     ssh_args, self.user, self.ip, self.datadir
+            # )
+            # cli_conf = "scp {3} -r {0} {1}@{2}:`dirname {0}`;".format(
+            #     self.datadir, self.user, self.ip, ssh_args
+            # )
+            # cli_kill = "ssh {}@{} killall conflux;".format(self.user, self.ip)
+            # cli_exe = 'ssh {} {}@{} "{} > /dev/null"'.format(
+            #     ssh_args,
+            #     self.user,
+            #     self.ip,
+            #     "cd {} && export RUST_BACKTRACE=full && ".format(self.datadir)
+            #     + " ".join(self.args),
+            #     )
+            # print(cli_mkdir + cli_kill + cli_conf + cli_exe)
+            # self.process = subprocess.Popen(
+            #     cli_mkdir + cli_kill + cli_conf + cli_exe,
+            #     stdout=stdout,
+            #     stderr=stderr,
+            #     cwd=self.datadir,
+            #     shell=True,
+            #     **kwargs,
+            #     )
         else:
             self.process = subprocess.Popen(
                 self.args, stdout=stdout, stderr=stderr, cwd=self.datadir, env=my_env, **kwargs)

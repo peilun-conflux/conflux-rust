@@ -23,7 +23,7 @@ def pssh(ips_file:str, remote_cmd:str, retry=0, cmd_description=""):
     execute(cmd, retry, cmd_description)
 
 def pscp(ips_file:str, local:str, remote:str, retry=0, cmd_description=""):
-    cmd = f'parallel-scp -O "StrictHostKeyChecking no" -h "{ips_file}" -p 400 "{local}" "{remote}" > /dev/null 2>&1'
+    cmd = f'parallel-scp -O "StrictHostKeyChecking no" -h "{ips_file}" -p 400 {local} {remote} > /dev/null 2>&1'
     execute(cmd, retry, cmd_description)
 
 def kill_remote_conflux(ips_file:str):
@@ -82,7 +82,7 @@ class LatencyExperiment(ArgumentHolder):
         OptionHelper.add_options(parser, exp_latency_options)
 
         remote_simulate_options = dict(filter(
-            lambda kv: kv.0 in set(["bandwidth", "enable_flamegraph", "enable_tx_propagation", "ips_file"]),
+            lambda kv: kv.0 in set(["bandwidth", "profiler", "enable_tx_propagation", "ips_file"]),
             list(RemoteSimulate.SIMULATE_OPTIONS.items()) +
                          list(RemoteSimulate.PASS_TO_CONFLUX_OPTIONS.items())))
         # Configs with different default values than RemoteSimulate
@@ -93,6 +93,7 @@ class LatencyExperiment(ArgumentHolder):
         OptionHelper.add_options(parser, remote_simulate_options)
 
         self.options = parser.parse_args()
+        self.txgen_account_count= int((os.path.getsize("./genesis_secrets.txt")/65)//self.slave_count)
 
         if os.path.getsize("./genesis_secrets.txt") % 65 != 0:
             print("genesis secrets account error, file size should be multiple of 65")
@@ -129,7 +130,7 @@ class LatencyExperiment(ArgumentHolder):
             print("Collecting metrics ...")
             tag = self.tag(config)
             execute("./copy_file_from_slave.sh metrics.log {} > /dev/null".format(tag), 3, "collect metrics")
-            if self.options.enable_flamegraph:
+            if self.options.profiler == "flamegraph":
                 try:
                     execute("./copy_file_from_slave.sh conflux.svg {} > /dev/null".format(tag), 10, "collect flamegraph")
                 except:
@@ -140,7 +141,7 @@ class LatencyExperiment(ArgumentHolder):
         print("=========================================================")
         print("archive the experiment results into [{}] ...".format(self.stat_archive_file))
         cmd = "tar cvfz {} {} *.exp.log *nodes.csv *.metrics.log".format(self.stat_archive_file, self.stat_log_file)
-        if self.options.enable_flamegraph:
+        if self.options.profiler == "flamegraph":
             cmd = cmd + " *.conflux.svg"
         os.system(cmd)
 
@@ -165,7 +166,10 @@ class LatencyExperiment(ArgumentHolder):
                 "--data-propagate-size", str(config.data_propagate_size),
             ])
 
+        if self.options.profiler in ["flamegraph", "heaptrack"]:
+            cmd.extend(["--profiler", self.options.profiler])
         print("[CMD]: {} > {}".format(cmd, self.simulate_log_file))
+
 
         ret = subprocess.run(cmd, stdout = self.simulate_log_file).returncode
         assert ret == 0, "Failed to run remote simulator, return code = {}. Please check [{}] for more details".format(ret, self.simulate_log_file)

@@ -1180,6 +1180,7 @@ impl ConsensusExecutionHandler {
                     }
                 }
             }
+            debug!("Finish executing tx in block");
 
             let block_receipts = Arc::new(receipts);
             self.data_man.insert_block_results(
@@ -1188,6 +1189,7 @@ impl ConsensusExecutionHandler {
                 block_receipts.clone(),
                 on_local_pivot,
             );
+            debug!("Finish inserting tx in block");
 
             epoch_receipts.push(block_receipts);
         }

@@ -28,8 +28,9 @@ sudo apt install -y iotop clang git jq pssh libsqlite3-dev xutils-dev cmake pkg-
 pip3 install prettytable
 pip3 install jsonrpcclient
 
-sudo apt install -y linux-tools-common
+sudo apt install -y linux-tools-common heaptrack
 sudo apt install -y linux-tools-`uname -r`
+rustup update
 cargo install flamegraph
 echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
 

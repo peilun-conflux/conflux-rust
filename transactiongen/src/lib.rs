@@ -152,7 +152,7 @@ impl TransactionGenerator {
 
         debug!("Setup Usable Genesis Accounts");
         let state = txgen.consensus.get_best_state();
-        for i in 0..tx_config.account_count {
+        for i in 0..tx_config.account_count-1 {
             let key_pair =
                 txgen.secret_store.get_keypair(account_start_index + i);
             let address = key_pair.address();
