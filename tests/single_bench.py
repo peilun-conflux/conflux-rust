@@ -31,7 +31,7 @@ class SingleBench(ConfluxTestFramework):
         block_gen_thread.start()
         tx_n = 100000
 
-        generate = False
+        generate = True
         if generate:
             f = open("encoded_tx", "wb")
             '''Test Random Transactions'''
@@ -40,10 +40,11 @@ class SingleBench(ConfluxTestFramework):
             nonce_map = {genesis_key: 0}
             all_txs = []
             gas_price = 1
+            start = time.time()
             self.log.info("start to generate %d transactions", tx_n)
             for i in range(tx_n):
                 if i % 1000 == 0:
-                    self.log.debug("generated %d tx", i)
+                    self.log.info("%f generated %d tx", time.time() - start, i)
                 sender_key = random.choice(list(balance_map))
                 nonce = nonce_map[sender_key]
                 if random.random() < 0.1 and balance_map[sender_key] > 21000 * 4 * tx_n:
@@ -59,7 +60,7 @@ class SingleBench(ConfluxTestFramework):
                 assert balance_map[sender_key] >= value + gas_price * 21000
                 tx = create_transaction(pri_key=sender_key, receiver=privtoaddr(receiver_sk), value=value, nonce=nonce,
                                         gas_price=gas_price)
-                self.log.debug("%s send %d to %s nonce=%d balance: sender=%s, receiver=%s", encode_hex(privtoaddr(sender_key)), value, encode_hex(privtoaddr(receiver_sk)), nonce, balance_map[sender_key], balance_map[receiver_sk])
+                # self.log.debug("%s send %d to %s nonce=%d balance: sender=%s, receiver=%s", encode_hex(privtoaddr(sender_key)), value, encode_hex(privtoaddr(receiver_sk)), nonce, balance_map[sender_key], balance_map[receiver_sk])
                 all_txs.append(tx)
                 nonce_map[sender_key] = nonce + 1
                 balance_map[sender_key] -= value + gas_price * 21000

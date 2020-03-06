@@ -54,6 +54,7 @@ enum TransGenState {
     Stop,
 }
 
+#[derive(Debug)]
 pub struct TransactionGeneratorConfig {
     pub generate_tx: bool,
     pub period: time::Duration,
@@ -165,9 +166,11 @@ impl TransactionGenerator {
     pub fn generate_transactions_with_multiple_genesis_accounts(
         txgen: Arc<TransactionGenerator>, tx_config: TransactionGeneratorConfig,
     ) {
+        debug!("generate_transactions_with_multiple_genesis_accounts starts");
         loop {
             let account_start = txgen.account_start_index.read();
             if account_start.is_some() {
+                debug!("generate_transactions_with_multiple_genesis_accounts break");
                 break;
             }
         }
@@ -270,10 +273,9 @@ impl TransactionGenerator {
             let signed_tx = tx.sign(&address_secret_pair[&sender_address]);
             let mut tx_to_insert = Vec::new();
             tx_to_insert.push(signed_tx.transaction);
-            let (txs, fail) =
-                txgen.txpool.insert_new_transactions(tx_to_insert);
+            let (_, fail) = txgen.txpool.insert_new_transactions(tx_to_insert);
             if fail.is_empty() {
-                txgen.sync.append_received_transactions(txs);
+                // txgen.sync.append_received_transactions(txs);
                 //tx successfully inserted into
                 // tx pool, so we can update our state about
                 // nonce and balance
@@ -308,7 +310,11 @@ impl TransactionGenerator {
             {
                 thread::sleep(time_left);
             } else {
-                debug!("Elapsed time larger than the time needed for sleep: time_elapsed={:?}", time_elapsed);
+                debug!(
+                    "Elapsed time larger than the time needed for sleep: \
+                     tx_n={} time_elapsed={:?}",
+                    tx_n, time_elapsed
+                );
             }
         }
     }

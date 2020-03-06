@@ -48,4 +48,6 @@ loggers:
     blockgen:
         level: info
     client:
-        level: info
+        level: debug
+    transactiongen:
+        level: debug
