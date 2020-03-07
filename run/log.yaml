@@ -38,7 +38,7 @@ loggers:
     network:
         level: info
     cfxcore:
-        level: info
+        level: debug
     rpc:
         level: info
     discovery:
@@ -48,4 +48,6 @@ loggers:
     blockgen:
         level: info
     client:
+        level: debug
+    txgen:
         level: info

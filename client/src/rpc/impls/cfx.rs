@@ -305,7 +305,7 @@ impl RpcImpl {
             .boxed()
     }
 
-    fn send_usable_genesis_accounts(
+    pub fn send_usable_genesis_accounts(
         &self, account_start_index: usize,
     ) -> RpcResult<Bytes> {
         info!(

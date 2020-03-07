@@ -65,6 +65,7 @@ impl StateManager {
         let mut state = StateDb::new(self.get_state_for_genesis_write());
 
         for (addr, balance) in genesis_accounts {
+            trace!("initialize addr={:?} balance={:?}", addr, balance);
             let account = Account::new_empty_with_balance(
                 &addr,
                 &balance,

@@ -286,12 +286,14 @@ impl ArchiveClient {
         }
 
         let tx_conf = conf.tx_gen_config();
+        debug!("tx_conf: {} {:?}", conf.raw_conf.generate_tx, tx_conf);
         let txgen_handle = if tx_conf.generate_tx {
+            debug!("generate_tx");
             let txgen_clone = txgen.clone();
-            let t = if conf.is_test_mode() {
-                match conf.raw_conf.genesis_secrets {
-                    Some(ref _file) => {
-                        thread::Builder::new()
+            let t = match conf.raw_conf.genesis_secrets {
+                Some(ref _file) => {
+                    debug!("genesis_secrets Some");
+                    thread::Builder::new()
                             .name("txgen".into())
                             .spawn(move || {
                                 TransactionGenerator::generate_transactions_with_multiple_genesis_accounts(
@@ -300,22 +302,8 @@ impl ArchiveClient {
                                 );
                             })
                             .expect("should succeed")
-                    }
-                    None =>{
-                        thread::Builder::new()
-                            .name("txgen".into())
-                            .spawn(move || {
-                                TransactionGenerator::generate_transactions(
-                                    txgen_clone,
-                                    tx_conf,
-                                )
-                                    .unwrap();
-                            })
-                            .expect("should succeed")
-                    }
                 }
-            } else {
-                thread::Builder::new()
+                None => thread::Builder::new()
                     .name("txgen".into())
                     .spawn(move || {
                         TransactionGenerator::generate_transactions(
@@ -324,7 +312,7 @@ impl ArchiveClient {
                         )
                         .unwrap();
                     })
-                    .expect("should succeed")
+                    .expect("should succeed"),
             };
             Some(t)
         } else {
@@ -408,11 +396,19 @@ impl ArchiveClient {
                 conf.raw_conf.jsonrpc_http_keep_alive,
             ),
             if conf.is_test_or_dev_mode() {
-                setup_debug_rpc_apis(common_impl, rpc_impl, None, &conf)
+                setup_debug_rpc_apis(common_impl, rpc_impl.clone(), None, &conf)
             } else {
-                setup_public_rpc_apis(common_impl, rpc_impl, None, &conf)
+                setup_public_rpc_apis(
+                    common_impl,
+                    rpc_impl.clone(),
+                    None,
+                    &conf,
+                )
             },
         )?;
+        if conf.raw_conf.bootnodes.is_none() {
+            rpc_impl.send_usable_genesis_accounts(1);
+        }
 
         Ok(ArchiveClientHandle {
             block_data_manager: Arc::downgrade(&data_man),
