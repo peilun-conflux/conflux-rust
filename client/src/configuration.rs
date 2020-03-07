@@ -394,7 +394,7 @@ impl Configuration {
     pub fn storage_config(&self) -> StorageConfiguration {
         StorageConfiguration {
             consensus_param: ConsensusParam {
-                snapshot_epoch_count: if self.is_test_mode() {
+                snapshot_epoch_count: if self.is_test_or_dev_mode() {
                     self.raw_conf.dev_snapshot_epoch_count
                 } else {
                     SNAPSHOT_EPOCHS_CAPACITY

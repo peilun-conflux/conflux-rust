@@ -10,6 +10,10 @@ generate_tx_period_us=3000
 mode = "dev"
 genesis_secrets = "../genesis_secrets.txt"
 txgen_account_count = 1000000
+dev_snapshot_epoch_count = 200
+era_epoch_count = 1000
+timer_chain_beta = 20
+adaptive_weight_beta = 100
 
 # Some preset develepment configurations.
 # It should not be set in production environment.
