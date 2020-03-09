@@ -428,6 +428,7 @@ impl ArchiveClient {
 
     /// Use a Weak pointer to ensure that other Arc pointers are released
     fn wait_for_drop<T>(w: Weak<T>) {
+        println!("wait for drop");
         let sleep_duration = Duration::from_secs(1);
         let warn_timeout = Duration::from_secs(5);
         let max_timeout = Duration::from_secs(10);

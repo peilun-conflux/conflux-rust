@@ -150,6 +150,7 @@ fn main() -> Result<(), String> {
             .map_err(|e| format!("failed to start archive client: {:?}", e))?;
         ArchiveClient::run_until_closed(exit, client_handle);
     }
+    info!("END!");
 
     Ok(())
 }

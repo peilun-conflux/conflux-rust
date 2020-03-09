@@ -48,6 +48,11 @@ class UnsignedTransaction(rlp.Serializable):
         ret._sender = utils.privtoaddr(key)
         return ret
 
+    def raw_hash(self):
+        rawhash = utils.sha3(
+            rlp.encode(self, UnsignedTransaction))
+        return rawhash
+
 
 class Transaction(rlp.Serializable):
     """

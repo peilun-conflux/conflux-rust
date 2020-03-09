@@ -105,3 +105,6 @@ debug-assertions = true
 
 [profile.bench]
 debug-assertions = true
+
+[profile.dev]
+opt-level = 1

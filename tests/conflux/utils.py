@@ -99,7 +99,8 @@ def ecrecover_to_pub(rawhash, v, r, s):
             )
             pub = pk.format(compressed=False)[1:]
             x, y = pk.point()
-        except BaseException:
+        except BaseException as e:
+            print(e)
             x, y = 0, 0
             pub = b"\x00" * 64
     else:

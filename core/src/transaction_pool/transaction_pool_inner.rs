@@ -370,6 +370,7 @@ impl TransactionPoolInner {
                 force,
             )
         };
+        debug!("insert result:{:?}", result);
 
         match &result {
             InsertResult::NewAdded => {
@@ -542,6 +543,7 @@ impl TransactionPoolInner {
         let mut too_big_txs = Vec::new();
 
         'out: while let Some(tx) = self.ready_account_pool.pop() {
+            debug!("get tx {:?}", tx);
             let tx_size = tx.rlp_size();
             if block_gas_limit - total_tx_gas_limit < *tx.gas_limit()
                 || block_size_limit - total_tx_size < tx_size
@@ -549,8 +551,10 @@ impl TransactionPoolInner {
                 too_big_txs.push(tx.clone());
                 if big_tx_resample_times_limit > 0 {
                     big_tx_resample_times_limit -= 1;
+                    trace!("Big tx!");
                     continue 'out;
                 } else {
+                    trace!("Break because of big tx");
                     break 'out;
                 }
             }
