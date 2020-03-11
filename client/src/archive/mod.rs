@@ -401,7 +401,7 @@ impl ArchiveClient {
             },
         )?;
         if conf.raw_conf.bootnodes.is_none() {
-            rpc_impl.send_usable_genesis_accounts(0);
+            rpc_impl.send_usable_genesis_accounts(1);
         }
 
         Ok(ArchiveClientHandle {
