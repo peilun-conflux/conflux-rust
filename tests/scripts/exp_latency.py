@@ -59,14 +59,9 @@ class RemoteSimulateConfig:
                 int(fields[3]),
             ))
 
-            if len(fields) == 6:
-                config_groups[-1].data_propagate_enabled = True
-                config_groups[-1].data_propagate_interval_ms = int(fields[4])
-                config_groups[-1].data_propagate_size = int(fields[5])
-
         return config_groups
 
-class LatencyExperiment(ArgumentHolder):
+class LatencyExperiment:
     def __init__(self):
         self.exp_name = "latency_latest"
         self.stat_confirmation_latency = False
@@ -82,7 +77,7 @@ class LatencyExperiment(ArgumentHolder):
         OptionHelper.add_options(parser, exp_latency_options)
 
         remote_simulate_options = dict(filter(
-            lambda kv: kv.0 in set(["bandwidth", "profiler", "enable_tx_propagation", "ips_file"]),
+            lambda kv: kv[0] in set(["bandwidth", "profiler", "enable_tx_propagation", "ips_file"]),
             list(RemoteSimulate.SIMULATE_OPTIONS.items()) +
                          list(RemoteSimulate.PASS_TO_CONFLUX_OPTIONS.items())))
         # Configs with different default values than RemoteSimulate
@@ -159,13 +154,6 @@ class LatencyExperiment(ArgumentHolder):
             "--tx-pool-size", str(1_000_000),
         ] + OptionHelper.parsed_options_to_args(self.options)
 
-        if config.data_propagate_enabled:
-            cmd.extend([
-                "--data-propagate-enabled",
-                "--data-propagate-interval-ms", str(config.data_propagate_interval_ms),
-                "--data-propagate-size", str(config.data_propagate_size),
-            ])
-
         if self.options.profiler in ["flamegraph", "heaptrack"]:
             cmd.extend(["--profiler", self.options.profiler])
         print("[CMD]: {} > {}".format(cmd, self.simulate_log_file))
@@ -187,11 +175,6 @@ class LatencyExperiment(ArgumentHolder):
 
     def stat_latency(self, config:RemoteSimulateConfig):
         os.system("echo ============================================================ >> {}".format(self.stat_log_file))
-
-        if config.data_propagate_enabled:
-            os.system('echo "Data propagation enabled: interval = {}, size = {}" >> {}'.format(
-                config.data_propagate_interval_ms, config.data_propagate_size, self.stat_log_file
-            ))
 
         print("begin to statistic relay latency ...")
         ret = os.system("python3 stat_latency.py {0} logs {0}.csv >> {1}".format(self.tag(config), self.stat_log_file))
