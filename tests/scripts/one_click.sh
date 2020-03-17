@@ -34,7 +34,7 @@ run_latency_exp () {
     if [ $profiler = "flamegraph" ] || [ $profiler = "heaptrack" ]; then
         profiler_option="--profiler $profiler"
     fi
-    ssh ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;nohup python3 ./exp_latency.py --vms $slave_count --batch-config \"$exp_config\" --storage-memory-gb 16 --bandwidth 20 --slave-count $slave_count --tps $tps --enable-tx-propagation --send-tx-period-ms 200 $profiler_option &"
+    ssh ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;nohup python3 ./exp_latency.py --vms $slave_count --batch-config \"$exp_config\" --storage-memory-gb 16 --bandwidth 20 --tps $tps --enable-tx-propagation --send-tx-period-ms 200 $profiler_option &"
     exit
 
     #5) Terminate slave instances

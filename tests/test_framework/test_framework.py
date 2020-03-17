@@ -545,7 +545,7 @@ class OptionHelper:
 
     def parsed_options_to_args(parsed_arg: dict):
         args = []
-        for arg_name, value in parsed_arg.items():
+        for (arg_name, value) in parsed_arg.items():
             args.append(OptionHelper.to_argument_str(arg_name))
             if type(value) is not bool:
                 args.append(str(value))
