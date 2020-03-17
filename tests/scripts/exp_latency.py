@@ -1,33 +1,14 @@
 #!/usr/bin/env python3
 
+# allow imports from parent directory
+# source: https://stackoverflow.com/a/11158224
+import os, sys
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
+
 import argparse
-import os
-from remote_simulate import RemoteSimulate
+from remote_simulate import RemoteSimulate, pssh, kill_remote_conflux
 import subprocess
-import time
 from test_framework.test_framework import OptionHelper
-
-def execute(cmd, retry, cmd_description):
-    while True:
-        ret = os.system(cmd)
-        if ret == 0:
-            break
-
-        print("Failed to {}, return code = {}, retry = {} ...".format(cmd_description, ret, retry))
-        assert retry > 0
-        retry -= 1
-        time.sleep(1)
-
-def pssh(ips_file:str, remote_cmd:str, retry=0, cmd_description=""):
-    cmd = f'parallel-ssh -O "StrictHostKeyChecking no" -h "{ips_file}" -p 400 "{remote_cmd}" > /dev/null 2>&1'
-    execute(cmd, retry, cmd_description)
-
-def pscp(ips_file:str, local:str, remote:str, retry=0, cmd_description=""):
-    cmd = f'parallel-scp -O "StrictHostKeyChecking no" -h "{ips_file}" -p 400 {local} {remote} > /dev/null 2>&1'
-    execute(cmd, retry, cmd_description)
-
-def kill_remote_conflux(ips_file:str):
-    pssh(ips_file, "killall conflux || echo already killed", 3, "kill remote conflux")
 
 def cleanup_remote_logs(ips_file:str):
     pssh(ips_file, "rm -f *.tgz *.out; rm -rf /tmp/conflux_test_*")
@@ -76,10 +57,14 @@ class LatencyExperiment:
         )
         OptionHelper.add_options(parser, exp_latency_options)
 
+        def k_from_kv(kv):
+            (k, v) = kv
+            return k
+
         remote_simulate_options = dict(filter(
-            lambda kv: kv[0] in set(["bandwidth", "profiler", "enable_tx_propagation", "ips_file"]),
-            list(RemoteSimulate.SIMULATE_OPTIONS.items()) +
-                         list(RemoteSimulate.PASS_TO_CONFLUX_OPTIONS.items())))
+            lambda kv: k_from_kv(kv) in set(["bandwidth", "profiler", "enable_tx_propagation", "ips_file"]),
+            list(RemoteSimulate.SIMULATE_OPTIONS.items())))
+        remote_simulate_options.update(RemoteSimulate.PASS_TO_CONFLUX_OPTIONS)
         # Configs with different default values than RemoteSimulate
         remote_simulate_options["nodes_per_host"] = 1
         remote_simulate_options["storage_memory_gb"] = 2
