@@ -1350,8 +1350,8 @@ impl ConsensusNewBlockHandler {
                 {
                     // Reset the epoch_number of the discarded fork
                     inner.reset_epoch_number_in_epoch(discarded_idx);
-                    ConsensusNewBlockHandler::try_clear_blockset_in_own_view_of_epoch(inner,
-                    discarded_idx);
+                    // ConsensusNewBlockHandler::try_clear_blockset_in_own_view_of_epoch(inner,
+                    // discarded_idx);
                 }
                 let mut u = new;
                 loop {
@@ -1423,7 +1423,7 @@ impl ConsensusNewBlockHandler {
                 // pivot chain not extend and not change
                 // FIXME: We should go back and revisit how we deal with this
                 // for performance
-                ConsensusNewBlockHandler::try_clear_blockset_in_own_view_of_epoch(inner, me);
+                // ConsensusNewBlockHandler::try_clear_blockset_in_own_view_of_epoch(inner, me);
                 inner.recompute_metadata(
                     inner.get_pivot_height(),
                     last_pivot_to_update,
