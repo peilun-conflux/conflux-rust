@@ -1806,6 +1806,20 @@ impl SynchronizationGraph {
                 "Recover blocks into header graph_ready {:?}",
                 new_header_graph_ready_blocks
             );
+            if !new_graph_ready_blocks.is_empty() {
+                let block_hashes: Vec<_> = new_graph_ready_blocks.iter().map(|i| inner.arena[*i].block_header.hash()).collect();
+                info!(
+                    "Recover blocks into graph_ready {:?}",
+                    block_hashes,
+                );
+            }
+            if !new_header_graph_ready_blocks.is_empty() {
+                let block_hashes: Vec<_> = new_header_graph_ready_blocks.iter().map(|i| inner.arena[*i].block_header.hash()).collect();
+                info!(
+                    "Recover blocks into graph_ready {:?}",
+                    block_hashes,
+                );
+            }
 
             for index in &new_graph_ready_blocks {
                 to_relay_blocks.push(inner.arena[*index].block_header.hash());
@@ -1913,8 +1927,15 @@ impl SynchronizationGraph {
                 }
             }
         }
+        if !expire_set.is_empty() {
+            let block_hashes: Vec<_> = expire_set.iter().map(|i| inner.arena[*i].block_header.hash()).collect();
+            info!(
+                "expire_set hashes {:?}",
+                block_hashes,
+            );
+        }
 
-        debug!("expire_set: {:?}", expire_set);
+        info!("expire_set: {:?}", expire_set);
         inner.remove_blocks(&expire_set);
     }
 }
