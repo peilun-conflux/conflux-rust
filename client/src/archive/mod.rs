@@ -33,6 +33,7 @@ use secret_store::SecretStore;
 use std::{str::FromStr, sync::Arc, thread, time::Duration};
 use threadpool::ThreadPool;
 use txgen::propagate::DataPropagation;
+use malloc_size_of::{MallocSizeOf, new_malloc_size_ops};
 
 pub struct ArchiveClientExtraComponents {
     pub debug_rpc_http_server: Option<HttpServer>,
@@ -330,6 +331,18 @@ impl ArchiveClient {
             },
         )?;
 
+        let consensus_arc = consensus.clone();
+        let tx_pool_arc = txpool.clone();
+        let sync_graph_src = sync.get_synchronization_graph();
+        thread::Builder::new().name("MallocSizeOf".into()).spawn(move ||{
+            loop {
+                let mut malloc_ops = new_malloc_size_ops();
+                info!("Consensus Malloc Size: {}", consensus_arc.size_of(&mut malloc_ops));
+                info!("Tx Pool Malloc Size: {}", tx_pool_arc.size_of(&mut malloc_ops));
+                info!("SyncGraph Malloc Size: {}", sync_graph_src.size_of(&mut malloc_ops));
+                thread::sleep(Duration::from_secs(1800));
+            }
+        });
         Ok(Box::new(ClientComponents {
             data_manager_weak_ptr: Arc::downgrade(&data_man),
             blockgen: Some(blockgen),
