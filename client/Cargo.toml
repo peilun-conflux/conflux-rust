@@ -65,6 +65,7 @@ libra-metrics = { path = "../core/src/alliance_tree_graph/bft/common/metrics" }
 libra-crypto = { path = "../core/src/alliance_tree_graph/bft/crypto/crypto" }
 libra-types = { path = "../core/src/alliance_tree_graph/bft/types" }
 tokio-timer = "0.2.13"
+malloc_size_of = { path = "../util/malloc_size_of" }
 
 [dev-dependencies]
 criterion = "0.2"
