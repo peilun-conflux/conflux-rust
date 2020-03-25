@@ -52,7 +52,7 @@ impl Request for GetCompactBlocks {
     fn resend(&self) -> Option<Box<dyn Request>> {
         Some(Box::new(GetBlocks {
             request_id: 0,
-            with_public: true,
+            with_public: false,
             hashes: self.hashes.iter().cloned().collect(),
         }))
     }
