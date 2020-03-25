@@ -1792,6 +1792,28 @@ impl SynchronizationGraph {
                 "not_ready_blocks_frontier: {:?}",
                 inner.not_ready_blocks_frontier.get_frontier()
             );
+            for index in inner.not_ready_blocks_frontier.get_frontier() {
+                assert_eq!(
+                    inner.arena[inner.arena[*index].parent].graph_status,
+                    BLOCK_GRAPH_READY,
+                    "Block {:?} is in frontier with not graph ready frontier",
+                    inner.arena[*index].block_header
+                );
+                let mut is_root = true;
+                for referee in &inner.arena[*index].referees {
+                    is_root &=
+                        inner.arena[*referee].graph_status == BLOCK_GRAPH_READY;
+                }
+                if is_root {
+                    info!("Block {:?} is not ready frontier root, status is {}, has been updated for {:?}",
+                          inner.arena[*index].block_header, inner.arena[*index].graph_status,
+                          SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() - inner.arena[*index].last_update_timestamp);
+                    assert!(!inner.arena[*index].block_ready);
+                }
+            }
             inner.not_ready_blocks_frontier.reset_update_state();
             let (
                 new_graph_ready_blocks,
