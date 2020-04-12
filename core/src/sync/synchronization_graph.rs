@@ -704,6 +704,7 @@ impl SynchronizationGraphInner {
             }
         }
 
+        trace!("new_to_be_graph_ready: {} TRUE", index);
         // parent and referees are all header graph ready.
         true
     }
@@ -1749,12 +1750,14 @@ impl SynchronizationGraph {
                     debug_assert!(
                         inner.arena[*child].graph_status < BLOCK_GRAPH_READY
                     );
+                    trace!("Add child {}", child);
                     queue.push_back(*child);
                 }
                 for referrer in &inner.arena[index].referrers {
                     debug_assert!(
                         inner.arena[*referrer].graph_status < BLOCK_GRAPH_READY
                     );
+                    trace!("Add referrers {}", referrer);
                     queue.push_back(*referrer);
                 }
             } else {
