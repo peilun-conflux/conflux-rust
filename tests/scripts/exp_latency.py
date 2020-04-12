@@ -109,6 +109,7 @@ class LatencyExperiment(ArgumentHolder):
         self.stat_archive_file = "exp_stat_latency.tgz"
         self.enable_flamegraph = False
 
+<<<<<<< HEAD
         self.exp_name = "latency_latest"
         self.nodes_per_host = 1
         self.block_sync_step = 10
@@ -132,6 +133,32 @@ class LatencyExperiment(ArgumentHolder):
         self.batch_config = "500:1:150000:1000,500:1:200000:1000,500:1:250000:1000,500:1:300000:1000,500:1:350000:1000"
 
         ArgumentHolder.__init__(self)
+=======
+        parser = argparse.ArgumentParser(usage="%(prog)s [options]")
+        self.exp_latency_options = dict(
+            vms = 10,
+            batch_config = "500:1:150000:1000,500:1:200000:1000,500:1:250000:1000,500:1:300000:1000,500:1:350000:1000",
+        )
+        OptionHelper.add_options(parser, self.exp_latency_options)
+
+        def k_from_kv(kv):
+            (k, v) = kv
+            return k
+
+        remote_simulate_options = dict(filter(
+            lambda kv: k_from_kv(kv) in set(["bandwidth", "profiler", "enable_tx_propagation", "ips_file", "enable_flamegraph"]),
+            list(RemoteSimulate.SIMULATE_OPTIONS.items())))
+        remote_simulate_options.update(RemoteSimulate.PASS_TO_CONFLUX_OPTIONS)
+        # Configs with different default values than RemoteSimulate
+        remote_simulate_options["nodes_per_host"] = 1
+        remote_simulate_options["storage_memory_gb"] = 2
+        remote_simulate_options["connect_peers"] = 8
+        remote_simulate_options["tps"] = 4000
+
+        OptionHelper.add_options(parser, remote_simulate_options)
+        self.options = parser.parse_args()
+
+>>>>>>> ca8b02b1... Fix experiement script issues. (#1231)
         if os.path.getsize("./genesis_secrets.txt") % 65 != 0:
             print("genesis secrets account error, file size should be multiple of 65")
             exit()
@@ -195,6 +222,7 @@ class LatencyExperiment(ArgumentHolder):
             "--block-sync-step", str(self.block_sync_step),
             "--txs-per-block", str(config.txs_per_block),
             "--generate-tx-data-len", str(config.tx_size),
+<<<<<<< HEAD
             "--connect-peers", str(self.connect_peers),
             "--ips-file", self.ips_file,
             "--throttling", self.throttling,
@@ -205,6 +233,13 @@ class LatencyExperiment(ArgumentHolder):
             "--send-tx-period-ms", str(self.send_tx_period_ms),
             "--txgen-account-count", str(self.txgen_account_count),
         ]
+=======
+            "--tx-pool-size", str(1_000_000),
+            "--conflux-binary", "~/conflux"
+        ] + OptionHelper.parsed_options_to_args(
+            dict(filter(lambda kv: kv[0] not in self.exp_latency_options, vars(self.options).items()))
+        )
+>>>>>>> ca8b02b1... Fix experiement script issues. (#1231)
 
         if config.data_propagate_enabled:
             cmd.extend([

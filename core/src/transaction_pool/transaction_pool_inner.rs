@@ -28,6 +28,13 @@ lazy_static! {
         register_meter_with_group("timer", "tx_pool::inner_insert");
     static ref DEFERRED_POOL_INNER_INSERT: Arc<dyn Meter> =
         register_meter_with_group("timer", "deferred_pool::inner_insert");
+    static ref TX_POOL_GET_STATE_TIMER: Arc<dyn Meter> =
+        register_meter_with_group("timer", "tx_pool::get_nonce_and_storage");
+    static ref TX_POOL_INNER_WITHOUTCHECK_INSERT_TIMER: Arc<dyn Meter> =
+        register_meter_with_group(
+            "timer",
+            "tx_pool::inner_without_check_inert"
+        );
     static ref GC_UNEXECUTED_COUNTER: Arc<dyn Counter<usize>> =
         CounterUsize::register_with_group("txpool", "gc_unexecuted");
     static ref GC_READY_COUNTER: Arc<dyn Counter<usize>> =
@@ -349,6 +356,9 @@ impl TransactionPoolInner {
         force: bool, state_nonce_and_balance: Option<(U256, U256)>,
     ) -> InsertResult
     {
+        let _timer = MeterTimer::time_func(
+            TX_POOL_INNER_WITHOUTCHECK_INSERT_TIMER.as_ref(),
+        );
         if !self.deferred_pool.check_sender_and_nonce_exists(
             &transaction.sender(),
             &transaction.nonce(),
@@ -497,9 +507,9 @@ impl TransactionPoolInner {
     fn recalculate_readiness_with_state(
         &mut self, addr: &Address, account_cache: &mut AccountCache,
     ) {
+        let _timer = MeterTimer::time_func(TX_POOL_RECALCULATE.as_ref());
         let (nonce, balance) = self
             .get_and_update_nonce_and_balance_from_storage(addr, account_cache);
-        let _timer = MeterTimer::time_func(TX_POOL_RECALCULATE.as_ref());
         let ret = self
             .deferred_pool
             .recalculate_readiness_with_local_info(addr, nonce, balance);
@@ -630,6 +640,7 @@ impl TransactionPoolInner {
         transaction: Arc<SignedTransaction>, packed: bool, force: bool,
     ) -> Result<(), String>
     {
+        let _timer = MeterTimer::time_func(TX_POOL_INNER_INSERT_TIMER.as_ref());
         let (state_nonce, state_balance) = self
             .get_nonce_and_balance_from_storage(
                 &transaction.sender,
@@ -665,7 +676,6 @@ impl TransactionPoolInner {
             ));
         }
 
-        let _timer = MeterTimer::time_func(TX_POOL_INNER_INSERT_TIMER.as_ref());
         let result = self.insert_transaction_without_readiness_check(
             transaction.clone(),
             packed,

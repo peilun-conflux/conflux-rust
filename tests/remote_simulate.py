@@ -288,6 +288,7 @@ class RemoteSimulate(ConfluxTestFramework):
         monitor_thread = threading.Thread(target=self.monitor, args=(cur_block_count, 100), daemon=True)
         monitor_thread.start()
 
+        max_retry = 200
         # generate blocks
         threads = {}
         rpc_times = []
@@ -298,7 +299,11 @@ class RemoteSimulate(ConfluxTestFramework):
             # find an idle node to generate block
             p = random.randint(0, num_nodes - 1)
             retry = 0
+<<<<<<< HEAD
             while retry < 10:
+=======
+            while retry < max_retry:
+>>>>>>> ca8b02b1... Fix experiement script issues. (#1231)
                 pre_thread = threads.get(p)
                 if pre_thread is not None and pre_thread.is_alive():
                     p = random.randint(0, num_nodes - 1)
@@ -307,7 +312,11 @@ class RemoteSimulate(ConfluxTestFramework):
                 else:
                     break
 
+<<<<<<< HEAD
             if retry >= 10:
+=======
+            if retry >= max_retry:
+>>>>>>> ca8b02b1... Fix experiement script issues. (#1231)
                 self.log.warn("too many nodes are busy to generate block, stop to analyze logs.")
                 break
 
@@ -331,6 +340,23 @@ class RemoteSimulate(ConfluxTestFramework):
                 time.sleep(wait_sec - elapsed)
             elif elapsed > 0.01:
                 self.log.warn("%d generating block slowly %.2f", p, elapsed)
+<<<<<<< HEAD
+=======
+        self.log.info("generateoneblock RPC latency: {}".format(Statistics(rpc_times, 3).__dict__))
+
+    def run_test(self):
+        # setup monitor to report the current block count periodically
+        cur_block_count = self.nodes[0].getblockcount()
+        # The monitor will check the block_count of nodes[0]
+        self.progress = 0
+        monitor_thread = threading.Thread(target=self.monitor, args=(cur_block_count, 100), daemon=True)
+        monitor_thread.start()
+
+        # When enable_tx_propagation is set, let conflux nodes generate tx automatically.
+        self.init_txgen()
+        # We instruct nodes to generate blocks.
+        self.generate_blocks_async()
+>>>>>>> ca8b02b1... Fix experiement script issues. (#1231)
 
         monitor_thread.join()
         self.log.info("Goodput: {}".format(self.nodes[0].getgoodput()))
