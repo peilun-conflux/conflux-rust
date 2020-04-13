@@ -36,7 +36,7 @@ pub use self::{
     get_block_txn::GetBlockTxn,
     get_block_txn_response::GetBlockTxnResponse,
     get_blocks::GetBlocks,
-    get_blocks_response::{GetBlocksResponse, GetBlocksWithPublicResponse},
+    get_blocks_response::{GetBlocksResponse, GetBlocksWithPublicResponse, NET_BLOCK_PENDING_SIZE},
     get_compact_blocks::GetCompactBlocks,
     get_compact_blocks_response::GetCompactBlocksResponse,
     get_terminal_block_hashes::GetTerminalBlockHashes,

@@ -19,6 +19,12 @@ use primitives::Block;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use rlp_derive::{RlpDecodable, RlpEncodable};
 use std::collections::HashSet;
+use lazy_static::lazy_static;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use malloc_size_of::{MallocSizeOf, new_malloc_size_ops};
+lazy_static! {
+    pub static ref NET_BLOCK_PENDING_SIZE: AtomicUsize = AtomicUsize::new(0);
+}
 
 #[derive(Debug, PartialEq, Default, RlpDecodable, RlpEncodable)]
 pub struct GetBlocksResponse {
@@ -28,6 +34,9 @@ pub struct GetBlocksResponse {
 
 impl Handleable for GetBlocksResponse {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
+        let mut malloc_size_of_ops = new_malloc_size_ops();
+        let old_size = NET_BLOCK_PENDING_SIZE.fetch_add(self.blocks.size_of(&mut malloc_size_of_ops), Ordering::Relaxed);
+        info!("Enqueued not-processed block size {}", old_size);
         let _timer = MeterTimer::time_func(BLOCK_HANDLE_TIMER.as_ref());
 
         debug!(

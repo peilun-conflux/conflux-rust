@@ -16,7 +16,7 @@ use crate::{
         message::{
             handle_rlp_message, msgid, Context, DynamicCapability,
             GetBlockHeadersResponse, NewBlockHashes, Status,
-            TransactionDigests,
+            TransactionDigests, NET_BLOCK_PENDING_SIZE,
         },
         state::SnapshotChunkSync,
         synchronization_phases::{SyncPhaseType, SynchronizationPhaseManager},
@@ -42,6 +42,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use malloc_size_of::{new_malloc_size_ops, MallocSizeOf};
+use std::sync::atomic::Ordering;
 
 lazy_static! {
     static ref TX_PROPAGATE_METER: Arc<dyn Meter> =
@@ -788,6 +790,8 @@ impl SynchronizationProtocolHandler {
     fn on_blocks_inner(
         &self, io: &dyn NetworkContext, task: RecoverPublicTask,
     ) -> Result<(), Error> {
+        let mut malloc_size_of_ops = new_malloc_size_ops();
+        let block_malloc_size = task.blocks.size_of(&mut malloc_size_of_ops);
         let mut need_to_relay = Vec::new();
         let mut received_blocks = HashSet::new();
         let mut dependent_hashes = HashSet::new();
@@ -876,7 +880,9 @@ impl SynchronizationProtocolHandler {
         );
         self.request_blocks(io, chosen_peer, missing_dependencies);
 
-        self.relay_blocks(io, need_to_relay)
+        self.relay_blocks(io, need_to_relay);
+        NET_BLOCK_PENDING_SIZE.fetch_sub(block_malloc_size, Ordering::Relaxed);
+        Ok(())
     }
 
     fn on_blocks_inner_task(
