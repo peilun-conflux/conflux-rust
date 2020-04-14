@@ -18,6 +18,8 @@ use metrics::MeterTimer;
 use primitives::{block::CompactBlock, Block};
 use rlp_derive::{RlpDecodable, RlpEncodable};
 use std::collections::HashSet;
+use malloc_size_of::{new_malloc_size_ops, MallocSizeOf};
+use std::sync::atomic::Ordering;
 
 #[derive(Debug, PartialEq, Default, RlpDecodable, RlpEncodable)]
 pub struct GetCompactBlocksResponse {
@@ -166,6 +168,9 @@ impl Handleable for GetCompactBlocksResponse {
             delay,
         );
 
+        let mut malloc_size_of_ops = new_malloc_size_ops();
+        let old_size = NET_BLOCK_PENDING_SIZE.fetch_add(self.blocks.size_of(&mut malloc_size_of_ops), Ordering::Relaxed);
+        info!("Enqueued not-processed block size {}", old_size);
         ctx.manager.recover_public_queue.dispatch(
             ctx.io,
             RecoverPublicTask::new(
