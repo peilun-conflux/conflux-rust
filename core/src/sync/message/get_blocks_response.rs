@@ -34,9 +34,6 @@ pub struct GetBlocksResponse {
 
 impl Handleable for GetBlocksResponse {
     fn handle(self, ctx: &Context) -> Result<(), Error> {
-        let mut malloc_size_of_ops = new_malloc_size_ops();
-        let old_size = NET_BLOCK_PENDING_SIZE.fetch_add(self.blocks.size_of(&mut malloc_size_of_ops), Ordering::Relaxed);
-        info!("Enqueued not-processed block size {}", old_size);
         let _timer = MeterTimer::time_func(BLOCK_HANDLE_TIMER.as_ref());
 
         debug!(
@@ -54,6 +51,9 @@ impl Handleable for GetBlocksResponse {
             warn!("recover_public_queue is full, discard GetBlocksResponse");
             return Ok(());
         }
+        let mut malloc_size_of_ops = new_malloc_size_ops();
+        let old_size = NET_BLOCK_PENDING_SIZE.fetch_add(self.blocks.size_of(&mut malloc_size_of_ops), Ordering::Relaxed);
+        info!("Enqueued not-processed block size {}", old_size);
 
         for block in &self.blocks {
             debug!("transaction received by block: ratio=1");
