@@ -7,7 +7,7 @@ use crate::{
     sync::{
         message::{
             metrics::{CMPCT_BLOCK_HANDLE_TIMER, CMPCT_BLOCK_RECOVER_TIMER},
-            Context, GetCompactBlocks, Handleable,
+            Context, GetCompactBlocks, Handleable, NET_BLOCK_PENDING_SIZE,
         },
         synchronization_protocol_handler::RecoverPublicTask,
         Error,
