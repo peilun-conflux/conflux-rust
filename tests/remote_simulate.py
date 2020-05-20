@@ -204,7 +204,7 @@ class RemoteSimulate(ConfluxTestFramework):
                 thread = SimpleGenerateThread(self.nodes, p, self.options.max_block_size_in_bytes, self.log, rpc_times)
             else:
                 # Generate a fixed-size block with fake tx
-                thread = GenerateThread(self.nodes, p, self.options.txs_per_block, self.options.generate_tx_data_len, self.log, rpc_times)
+                thread = GenerateThread(self.nodes, p, self.options.txs_per_block, self.options.generate_tx_data_len, self.options.max_block_size_in_bytes, self.log, rpc_times)
             thread.start()
             threads[p] = thread
 

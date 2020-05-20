@@ -42,10 +42,10 @@ run_latency_exp () {
     --storage-memory-gb 16 \
     --bandwidth 20 \
     --tps $tps \
-    --enable-tx-propagation \
     --send-tx-period-ms 200 \
     $flamegraph_option \
     --max-block-size-in-bytes $max_block_size_in_bytes "
+    # --enable-tx-propagation \
 
     #5) Terminate slave instances
     rm -rf tmp_data
