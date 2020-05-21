@@ -145,7 +145,7 @@ class RemoteSimulate(ConfluxTestFramework):
         pssh(self.options.ips_file, cmd, 3, "setup and run conflux on remote nodes")
 
     def setup_network(self):
-        self.setup_remote_conflux()
+        # self.setup_remote_conflux()
 
         # add remote nodes and start all
         for ip in self.ips:

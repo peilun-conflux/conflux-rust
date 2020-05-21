@@ -142,7 +142,7 @@ class TestNode:
             cli_conf = "scp {3} -r {0} {1}@{2}:`dirname {0}`;".format(
                 self.datadir, self.user, self.ip, ssh_args
             )
-            cli_kill = "ssh {}@{} killall conflux;".format(self.user, self.ip)
+            cli_kill = "ssh {}@{} killall -9 conflux;".format(self.user, self.ip)
             cli_exe = 'ssh {} {}@{} "{} > ~/stdout"'.format(
                 ssh_args,
                 self.user,
