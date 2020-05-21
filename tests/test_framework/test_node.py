@@ -126,7 +126,7 @@ class TestNode:
         if extra_args is not None:
             self.args += extra_args
         if "--public-address" not in self.args:
-            self.args += ["--public-address", "{}:{}".format(self.ip, self.port)]
+            self.args += ["--public-address", "{}".format(self.ip)]
 
         # Delete any existing cookie file -- if such a file exists (eg due to
         # unclean shutdown), it will get overwritten anyway by bitcoind, and

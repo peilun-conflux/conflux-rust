@@ -115,6 +115,7 @@ class RemoteSimulate(ConfluxTestFramework):
             self.conf_parameters["generate_tx_period_us"] = str(1000000 * len(self.ips) // self.options.tps)
         else:
             self.conf_parameters["send_tx_period_ms"] = "31536000000" # one year to disable txs propagation
+            del self.conf_parameters["genesis_secrets"]
         # FIXME: Double check if disabling this improves performance.
         self.conf_parameters["enable_optimistic_execution"] = "false"
 
@@ -311,7 +312,7 @@ class GenerateThread(threading.Thread):
         self.nodes = nodes
         self.i = i
         self.tx_n = tx_n
-        self.tx_data_len = tx_data_len
+        self.tx_data_len = tx_data_len - 200
         self.max_block_size = max_block_size
         self.log = log
         self.rpc_times = rpc_times
