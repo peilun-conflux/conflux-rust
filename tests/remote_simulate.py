@@ -240,7 +240,8 @@ class RemoteSimulate(ConfluxTestFramework):
         self.log.info("Goodput: {}".format(self.nodes[0].getgoodput()))
         self.wait_until_nodes_synced()
 
-        self.log.info("Best block: {}".format(RpcClient(self.nodes[0]).best_block_hash()))
+        node0 = RpcClient(self.nodes[0])
+        self.log.info("Best block: {}, height: {}".format(node0.best_block_hash(), node0.epoch_number()))
 
     def wait_until_nodes_synced(self):
         """

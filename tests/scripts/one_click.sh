@@ -12,6 +12,8 @@ repo="${4:-https://github.com/Conflux-Chain/conflux-rust}"
 enable_flamegraph=${5:-false}
 slave_role=${key_pair}_exp_slave
 
+nodes_per_host = 10
+
 run_latency_exp () {
     branch=$1
     exp_config=$2
@@ -44,6 +46,7 @@ run_latency_exp () {
     --tps $tps \
     --send-tx-period-ms 200 \
     $flamegraph_option \
+    --nodes-per-host $nodes_per_host \
     --max-block-size-in-bytes $max_block_size_in_bytes "
     # --enable-tx-propagation \
 
