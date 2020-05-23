@@ -220,8 +220,8 @@ class RemoteSimulate(ConfluxTestFramework):
             for block in block_start_time:
                 if block not in block_confirmation_time:
                     p = random.randint(0, num_nodes - 1)
-                    risk = float(self.nodes[p].cfx_getConfirmationRiskByHash(block))
-                    if risk <= CONFIRMATION_THRESHOLD:
+                    risk = self.nodes[p].cfx_getConfirmationRiskByHash(block)
+                    if risk is not None and float(risk) <= CONFIRMATION_THRESHOLD:
                         block_confirmation_time[block] = time.time() - block_start_time[block]
 
             elapsed = time.time() - start
