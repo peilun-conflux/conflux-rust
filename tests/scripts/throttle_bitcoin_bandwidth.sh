@@ -27,7 +27,7 @@ then
 fi
 echo "Throttled nodes: $process_n"
 
-for i in `seq 0 $((process_n-1))`
+for i in `seq 1 $process_n`
 do 
     if [[ ! -n `ls /sys/fs/cgroup/net_cls|grep limit$i` ]]
     then
