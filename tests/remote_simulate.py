@@ -247,7 +247,7 @@ class RemoteSimulate(ConfluxTestFramework):
         self.confirm_info = BlockConfirmationInfo()
         monitor_thread = threading.Thread(target=self.monitor, args=(cur_block_count, 100), daemon=True)
         monitor_thread.start()
-        threading.Thread(target=self.generate_blocks_async, daemon=True).start()
+        threading.Thread(target=self.gather_confirmation_latency_async, daemon=True).start()
         # When enable_tx_propagation is set, let conflux nodes generate tx automatically.
         self.init_txgen()
 
