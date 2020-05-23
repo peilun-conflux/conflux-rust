@@ -1301,10 +1301,11 @@ impl ConsensusNewBlockHandler {
                 // Therefore we add this condition fork_at >
                 // force_height to maintain consistency.
                 if fork_at > force_height
-                    && ConsensusGraphInner::is_heavier(
-                        (new_weight, &inner.arena[new].hash),
-                        (prev_weight, &inner.arena[prev].hash),
-                    )
+                    && (inner.arena[me].height + 1, &inner.arena[new].hash)
+                        > (
+                            inner.pivot_chain.len() as u64,
+                            &inner.arena[prev].hash,
+                        )
                 {
                     pivot_changed = true;
                 } else {

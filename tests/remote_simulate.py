@@ -278,7 +278,7 @@ class RemoteSimulate(ConfluxTestFramework):
 
             self.log.info("blocks: {}".format(Counter(block_counts)))
 
-            if block_counts.count(block_counts[0]) == len(self.nodes) and best_blocks.count(best_blocks[0]) == len(self.nodes):
+            if best_blocks.count(best_blocks[0]) == len(self.nodes):
                 break
 
             time.sleep(5)

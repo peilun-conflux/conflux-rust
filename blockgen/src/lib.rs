@@ -330,12 +330,10 @@ impl BlockGenerator {
             .unwrap();
 
         let best_block_hash = best_info.best_block_hash.clone();
-        let mut referee = best_info.bounded_terminal_block_hashes.clone();
-        referee.retain(|r| *r != best_block_hash);
 
         self.assemble_new_block_impl(
             best_block_hash,
-            referee,
+            vec![],
             blame,
             deferred_state_root,
             deferred_receipts_root,
