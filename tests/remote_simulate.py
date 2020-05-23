@@ -16,7 +16,7 @@ import time
 from scripts.stat_latency_map_reduce import Statistics
 import os
 
-CONFIRMATION_THRESHOLD = 0.1**-6 * 2*256
+CONFIRMATION_THRESHOLD = 0.1**-6 * 2**256
 
 def execute(cmd, retry, cmd_description):
     while True:
