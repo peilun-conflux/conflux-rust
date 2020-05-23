@@ -181,7 +181,7 @@ class RemoteSimulate(ConfluxTestFramework):
         threads = {}
         rpc_times = []
         confirm_info = BlockConfirmationInfo()
-        CONFIRMATION_THRESHOLD = 0.1**-6
+        CONFIRMATION_THRESHOLD = 0.1**-6 * 2*256
         for i in range(1, self.options.num_blocks + 1):
             wait_sec = random.expovariate(1000 / self.options.generation_period_ms)
             start = time.time()
@@ -219,7 +219,7 @@ class RemoteSimulate(ConfluxTestFramework):
             for block in confirm_info.get_unconfirmed_blocks():
                 p = random.randint(0, num_nodes - 1)
                 risk = self.nodes[p].cfx_getConfirmationRiskByHash(block)
-                if risk is not None and float(risk) <= CONFIRMATION_THRESHOLD:
+                if risk is not None and int(risk, 16) <= CONFIRMATION_THRESHOLD:
                     confirm_info.confirm_block(block)
 
             elapsed = time.time() - start
