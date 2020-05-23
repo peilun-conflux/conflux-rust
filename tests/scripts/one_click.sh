@@ -27,10 +27,10 @@ run_latency_exp () {
     #2) Launch slave instances
     master_ip=`cat ips`
     slave_image=`cat slave_image`
-    sshvpn ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;rm -rf ~/.ssh/known_hosts;./launch-on-demand.sh $slave_count $key_pair $slave_role $slave_image;"
+    ssh ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;rm -rf ~/.ssh/known_hosts;./launch-on-demand.sh $slave_count $key_pair $slave_role $slave_image;"
 
     #3) compile, and distributed binary to slaves: You can make change on the MASTER node and run the changed code against SLAVES nodes.
-    sshvpn ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;export RUSTFLAGS=\"-g\" && cargo build --release ;\
+    ssh ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;export RUSTFLAGS=\"-g\" && cargo build --release ;\
     parallel-scp -O \"StrictHostKeyChecking no\" -h ips -l ubuntu -p 1000 ../../target/release/conflux ~ |grep FAILURE|wc -l;"
 
     #4) Run experiments
@@ -38,7 +38,7 @@ run_latency_exp () {
     if [ $enable_flamegraph = true ]; then
         flamegraph_option="--enable-flamegraph"
     fi
-    sshvpn -tt ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;python3 ./exp_latency.py \
+    ssh -tt ubuntu@${master_ip} "cd ./conflux-rust/tests/scripts;python3 ./exp_latency.py \
     --vms $slave_count \
     --batch-config \"$exp_config\" \
     --storage-memory-gb 16 \
