@@ -1009,9 +1009,11 @@ impl State {
         assert!(self.staking_state_checkpoints.get_mut().is_empty());
 
         self.precommit_make_dirty_accounts_list();
+        debug!("commit staking state {:?}", self.staking_state);
         self.commit_staking_state(debug_record.as_deref_mut())?;
 
         let mut killed_addresses = Vec::new();
+        debug!("commit accounts {:?}", self.dirty_accounts_to_commit);
         for (address, entry) in self.dirty_accounts_to_commit.iter_mut() {
             entry.state = AccountState::Committed;
             match &mut entry.account {
