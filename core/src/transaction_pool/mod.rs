@@ -131,6 +131,9 @@ impl MallocSizeOf for TransactionPool {
         let set_tx_requests_size = self.set_tx_requests.lock().size_of(ops);
         let recycle_tx_requests_size =
             self.recycle_tx_requests.lock().size_of(ops);
+        debug!("TransactionPool Size: {} {} {}", self.to_propagate_trans.read().len(), self.set_tx_requests.lock().len(), self.recycle_tx_requests.lock().len());
+        debug!("TransactionPool MallocSizeOf: {} {} {} {} {}",
+               inner_size, to_propagate_trans_size, consensus_best_info_size, set_tx_requests_size, recycle_tx_requests_size);
         self.config.size_of(ops)
             + inner_size
             + to_propagate_trans_size

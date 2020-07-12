@@ -19,6 +19,8 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
+
 type WeightType = u128;
 lazy_static! {
     pub static ref MAX_WEIGHT: U256 = u128::max_value().into();
@@ -224,7 +226,6 @@ impl ReadyAccountPool {
     }
 }
 
-#[derive(DeriveMallocSizeOf)]
 pub struct TransactionPoolInner {
     capacity: usize,
     total_received_count: usize,
@@ -236,6 +237,25 @@ pub struct TransactionPoolInner {
     txs: HashMap<H256, Arc<SignedTransaction>>,
     tx_sponsored_gas_map: HashMap<H256, U256>,
 }
+
+
+impl MallocSizeOf for TransactionPoolInner {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        let defer_size = self.deferred_pool.size_of(ops);
+        let ready_account_size = self.ready_account_pool.size_of(ops);
+        let ready_nonce_size = self.ready_nonces_and_balances.size_of(ops);
+        let gc_size = self.garbage_collector.size_of(ops);
+        let tx_size = self.txs.size_of(ops);
+        let sponsor_gas_size = self.tx_sponsored_gas_map.size_of(ops);
+        debug!("TransactionPoolInner size: {} {} {} {} {} {}",
+        self.deferred_pool.buckets.len(), self.ready_account_pool.len(), self.ready_nonces_and_balances.len(),
+        self.garbage_collector.len(), self.txs.len(), self.tx_sponsored_gas_map.len());
+        debug!("TransactionPoolInner MallocSizeOf: {} {} {} {} {} {}",
+            defer_size, ready_account_size, ready_nonce_size, gc_size, tx_size, sponsor_gas_size);
+        defer_size + ready_account_size + ready_nonce_size + gc_size + tx_size + sponsor_gas_size
+    }
+}
+
 
 impl TransactionPoolInner {
     pub fn new(
