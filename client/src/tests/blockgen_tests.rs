@@ -17,10 +17,27 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use log4rs::config::{Root, Appender, Config as LogConfig};
+use log4rs::append::console::ConsoleAppender;
+use log::LevelFilter;
+use log4rs::encode::pattern::PatternEncoder;
 
 fn test_mining_10_epochs_inner(
     handle: &ClientComponents<BlockGenerator, ArchiveClientExtraComponents>,
 ) {
+    let mut conf_builder =
+        LogConfig::builder().appender(Appender::builder().build(
+            "stdout",
+            Box::new(ConsoleAppender::builder().encoder(Box::new(PatternEncoder::new(
+                "{d} {h({l}):5.5} {T:<20.20} {t:12.12} - {m}{n}"))).build()),
+        ));
+    let mut root_builder = Root::builder().appender("stdout");
+    let log_config = conf_builder
+        .build(root_builder.build(LevelFilter::Debug))
+        .map_err(|e| format!("failed to build log config: {:?}", e)).unwrap();
+    log4rs::init_config(log_config).map_err(|e| {
+        format!("failed to initialize log with config: {:?}", e)
+    }).unwrap();
     let bgen = handle.blockgen.clone().unwrap();
     //println!("Pow Config: {:?}", bgen.pow_config());
     thread::spawn(move || {
