@@ -3,7 +3,7 @@
 # A node is identified by cfxnode://NODEID@PUBLICIP:PORT
 # By default, no bootnodes are provided. What's provided here is a list of nodes that Conflux Team maintains across the world.
 
-bootnodes="cfxnode://25265e1aa470d9d8667947820c4830a64e9f9678d6cb23ecde91e0447527f4926257b9637923a305ce91e15c929ed28164e6c32b76213764eb4a9624120ae1d7@39.97.180.246:32323,cfxnode://2b72adc3f52a80945db10fa35c3f6d02c73f65ff98b4a9eae4f7b244e8a51f01690e7dcef7a30bfb67fb07fcb2949e67c27487169623d40f6a9e55a8d04ca34f@39.107.143.220:32323,cfxnode://5da942ac58e392e9f68784876a1800ffe5756f8498aa1a7a9a869fe9370c2e838a114dfce33fff9674633700a0094aed8b46722fb6b03619842602a2473223de@39.97.170.199:32323,cfxnode://28d3cdf07b7deb41bb52dee0a952fc599f46f6b89cc513ecfd1020d5a66e73e7cfe68543e64962aefbcae7123a6c390a43144f5900f0bc181c3c89ffdf9ff81b@39.97.225.254:32323,cfxnode://302780859a59078df271315d2508b52a0257eec981ca9a3d2bd04540c93348559c7194fcbef708862f6e7cee47faa17f50afce2e02abcb85fdb91892bbe6d586@18.181.246.230:32323"
+bootnodes="cfxnode://49ff58db6b4c5f92c2145e69ea0625134cbe35885f0e5979191ba9c67e4c9374234ed7fbeb65f82d4d197568110a4f100f078bfbac896f391b362bec77be19ea@212.64.63.38:32323,cfxnode://04cee414977f68a0c2f0215199dde4ec1c27350e447ea855ce000054336f4ccb1c43f0c5ebe8172ad51c7d7b88ac98c037a85ae949e79734449ac38a23fd1d60@212.64.62.252:32323"
 
 # Some preset develepment configurations.
 # It should not be set in production environment.
@@ -450,7 +450,7 @@ jsonrpc_local_http_port=12539
 # max_trans_count_received_in_catch_up = 60_000
 
 # The chain_id of conflux network
-# 0 for testnet
-# commentting out for not verify chain_id
+# 1 for testnet
+# 1029 for Tethys
 #
-chain_id = 2
+chain_id = 1029
