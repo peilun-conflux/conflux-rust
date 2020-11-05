@@ -820,6 +820,8 @@ impl SynchronizationProtocolHandler {
         let my_best_epoch = self.graph.consensus.best_epoch_number();
         let (mut latest_requested_epoch, latest_request_time) =
             *latest_requested;
+        debug!("request_epochs: latest_requested_epoch={:?}, median={}, my_best_epoch={} inflight_epochs={}",
+               latest_requested_epoch, median_peer_epoch, my_best_epoch, self.request_manager.num_epochs_in_flight());
 
         // If the gap is too large, it means that the next epoch of
         // `my_best_epoch` is missing, either because received
