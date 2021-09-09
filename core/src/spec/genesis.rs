@@ -390,7 +390,7 @@ pub fn genesis_block(
     }
 
     state
-        .genesis_special_clean_account(&genesis_account_address)
+        .clean_account(&genesis_account_address)
         .expect("Clean account failed");
 
     let state_root = state

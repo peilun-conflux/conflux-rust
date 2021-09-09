@@ -33,7 +33,13 @@ impl ExecutionTrait for SetAdmin {
         _tracer: &mut dyn Tracer<Output = ExecTrace>,
     ) -> vm::Result<()>
     {
-        set_admin(inputs.0, inputs.1, params, context)
+        set_admin(
+            inputs.0,
+            inputs.1,
+            context.callstack.contract_in_creation(),
+            params,
+            context.state,
+        )
     }
 }
 

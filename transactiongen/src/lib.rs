@@ -300,7 +300,8 @@ impl DirectTransactionGenerator {
                 &start_address,
                 &start_balance,
                 &0.into(), /* nonce */
-            ),
+            )
+            .unwrap(),
             start_erc20_balance,
         );
         let mut accounts = HashMap::<Address, (KeyPair, Account, U256)>::new();
@@ -392,7 +393,8 @@ impl DirectTransactionGenerator {
                                     &address,
                                     &0.into(), /* balance */
                                     &0.into(), /* nonce */
-                                ),
+                                )
+                                .unwrap(),
                                 0.into(),
                             ),
                         );

@@ -504,15 +504,11 @@ impl<'a, Substate: SubstateMngTrait> CallCreateExecutive<'a, Substate> {
         state.checkpoint();
 
         let contract_address = self.get_recipient().clone();
-        let allow_reentrancy = if self.context.spec.cip71a {
-            get_reentrancy_allowance(
-                &contract_address,
-                state,
-                &mut self.context.substate,
-            )?
-        } else {
-            false
-        };
+        let allow_reentrancy = get_reentrancy_allowance(
+            &contract_address,
+            state,
+            &mut self.context.substate,
+        )?;
         callstack.push(contract_address, is_create, allow_reentrancy);
 
         // Pre execution: transfer value and init contract.
@@ -947,12 +943,12 @@ impl<
         let mut storage_sponsored = false;
         match tx.action {
             Action::Call(ref address) => {
-                if !spec.is_valid_address(address) {
+                if !address.is_valid_address() {
                     return Ok(ExecutionOutcome::NotExecutedDrop(
                         TxDropError::InvalidRecipientAddress(*address),
                     ));
                 }
-                if self.state.is_contract_with_code(address)? {
+                if address.is_contract_address() {
                     code_address = *address;
                     if self
                         .state
