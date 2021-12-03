@@ -147,7 +147,7 @@ pub(crate) async fn process_transaction_broadcast(
         return;
     }
     notify_subscribers(SharedMempoolNotification::ACK, &smp.subscribers);
-    diem_trace!("execute_broadcast ends: peer={}", peer);
+    diem_trace!("process_transaction_broadcast ends: peer={}", peer);
 }
 
 fn gen_ack_response(
