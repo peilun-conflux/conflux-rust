@@ -130,7 +130,7 @@ pub struct StorageManager {
 
     last_confirmed_snapshottable_epoch_id: Mutex<Option<EpochId>>,
 
-    storage_conf: StorageConfiguration,
+    pub storage_conf: StorageConfiguration,
 }
 
 impl MallocSizeOf for StorageManager {
@@ -829,10 +829,12 @@ impl StorageManager {
         state_availability_boundary: &RwLock<StateAvailabilityBoundary>,
     ) -> Result<()>
     {
-        let additional_state_height_gap =
-            (self.storage_conf.additional_maintained_snapshot_count
-                * self.storage_conf.consensus_param.snapshot_epoch_count)
-                as u64;
+        let additional_state_height_gap = self
+            .storage_conf
+            .additional_maintained_snapshot_count
+            .saturating_mul(
+                self.storage_conf.consensus_param.snapshot_epoch_count,
+            ) as u64;
         let maintained_state_height_lower_bound =
             if confirmed_height > additional_state_height_gap {
                 confirmed_height - additional_state_height_gap
