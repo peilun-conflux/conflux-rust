@@ -8,7 +8,7 @@
 #![forbid(unsafe_code)]
 
 use crate::ledger_info::{LedgerInfo, LedgerInfoWithSignatures};
-use anyhow::{ensure, format_err, Result};
+use anyhow::{ensure, format_err, Context, Result};
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest::{collection::vec, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -119,7 +119,10 @@ impl EpochChangeProof {
         {
             // Try to verify each (epoch -> epoch + 1) jump in the
             // EpochChangeProof.
-            verifier_ref.verify(ledger_info_with_sigs)?;
+            verifier_ref.verify(ledger_info_with_sigs).context(format!(
+                "epoch {} fails",
+                ledger_info_with_sigs.ledger_info().epoch()
+            ))?;
             // While the original verification could've been via waypoints,
             // all the next epoch changes are verified using the (already
             // trusted) validator sets.

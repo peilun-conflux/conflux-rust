@@ -23,6 +23,7 @@ use crate::{
 };
 #[cfg(any(test, feature = "fuzzing"))]
 use anyhow::{ensure, Result};
+use diem_logger::prelude::diem_debug;
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest_derive::Arbitrary;
 
@@ -206,7 +207,10 @@ impl ValidatorVerifier {
                     Ok(())
                 }
             }
-            None => Err(VerifyError::UnknownAuthor),
+            None => {
+                diem_debug!("unknown author {:?}", author);
+                Err(VerifyError::UnknownAuthor)
+            }
         }
     }
 
@@ -222,7 +226,10 @@ impl ValidatorVerifier {
                     Ok(())
                 }
             }
-            _ => Err(VerifyError::UnknownAuthor),
+            _ => {
+                diem_debug!("unknown author {:?}", author);
+                Err(VerifyError::UnknownAuthor)
+            }
         }
     }
 
@@ -304,7 +311,10 @@ impl ValidatorVerifier {
         for account_address in authors {
             match self.get_voting_power(&account_address) {
                 Some(voting_power) => aggregated_voting_power += voting_power,
-                None => return Err(VerifyError::UnknownAuthor),
+                None => {
+                    diem_debug!("unknown author {:?}", account_address);
+                    return Err(VerifyError::UnknownAuthor);
+                }
             }
         }
 
