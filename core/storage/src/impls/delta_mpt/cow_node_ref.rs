@@ -401,6 +401,7 @@ impl CowNodeRef {
         parent_node_path_steps_plus_one: u16,
     ) -> Result<MerkleHash>
     {
+        trace!("get_or_compute_merkle: self.node_ref={:?}", self.node_ref);
         if self.owned {
             let trie_node = unsafe {
                 trie.get_node_memory_manager().dirty_node_as_mut_unchecked(
@@ -408,6 +409,7 @@ impl CowNodeRef {
                     &mut self.node_ref,
                 )
             };
+            trace!("get_or_compute_merkle: trie_node.compressed_path_ref={:?} path_size={}", trie_node.compressed_path_ref(), trie_node.get_compressed_path_size());
             let node_path_steps = parent_node_path_steps_plus_one
                 + trie_node.compressed_path_ref().path_steps();
             let children_merkles = self.get_or_compute_children_merkles(
