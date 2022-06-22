@@ -159,7 +159,7 @@ impl StateTrait for StateGeneric {
     /// of a transaction.
     fn settle_collateral_for_all(
         &mut self, substate: &Substate, tracer: &mut dyn StateTracer,
-        account_start_nonce: U256,
+        account_start_nonce: U256, dry_run_no_charge: bool,
     ) -> DbResult<CollateralCheckResult>
     {
         for address in substate.keys_for_collateral_changed().iter() {
@@ -168,6 +168,7 @@ impl StateTrait for StateGeneric {
                 substate,
                 tracer,
                 account_start_nonce,
+                dry_run_no_charge,
             )? {
                 CollateralCheckResult::Valid => {}
                 res => return Ok(res),
@@ -181,7 +182,7 @@ impl StateTrait for StateGeneric {
     fn collect_and_settle_collateral(
         &mut self, original_sender: &Address, storage_limit: &U256,
         substate: &mut Substate, tracer: &mut dyn StateTracer,
-        account_start_nonce: U256,
+        account_start_nonce: U256, dry_run_no_charge: bool,
     ) -> DbResult<CollateralCheckResult>
     {
         self.collect_ownership_changed(substate)?;
@@ -189,10 +190,13 @@ impl StateTrait for StateGeneric {
             substate,
             tracer,
             account_start_nonce,
+            dry_run_no_charge,
         )? {
-            CollateralCheckResult::Valid => {
-                self.check_storage_limit(original_sender, storage_limit)?
-            }
+            CollateralCheckResult::Valid => self.check_storage_limit(
+                original_sender,
+                storage_limit,
+                dry_run_no_charge,
+            )?,
             res => res,
         };
         Ok(res)
@@ -941,7 +945,9 @@ impl StateOpsTrait for StateGeneric {
 
     fn deposit(
         &mut self, address: &Address, amount: &U256, current_block_number: u64,
-    ) -> DbResult<()> {
+        cip_97: bool,
+    ) -> DbResult<()>
+    {
         let address = address.with_native_space();
         if !amount.is_zero() {
             {
@@ -955,6 +961,7 @@ impl StateOpsTrait for StateGeneric {
                     *amount,
                     self.world_statistics.accumulate_interest_rate,
                     current_block_number,
+                    cip_97,
                 );
             }
             self.world_statistics.total_staking_tokens += *amount;
@@ -962,7 +969,9 @@ impl StateOpsTrait for StateGeneric {
         Ok(())
     }
 
-    fn withdraw(&mut self, address: &Address, amount: &U256) -> DbResult<U256> {
+    fn withdraw(
+        &mut self, address: &Address, amount: &U256, cip_97: bool,
+    ) -> DbResult<U256> {
         let address = address.with_native_space();
         if !amount.is_zero() {
             let interest;
@@ -976,6 +985,7 @@ impl StateOpsTrait for StateGeneric {
                 interest = account.withdraw(
                     *amount,
                     self.world_statistics.accumulate_interest_rate,
+                    cip_97,
                 );
             }
             // the interest will be put in balance.
@@ -1327,6 +1337,7 @@ impl StateGeneric {
     fn settle_collateral_for_address(
         &mut self, addr: &Address, substate: &dyn SubstateTrait,
         tracer: &mut dyn StateTracer, account_start_nonce: U256,
+        dry_run_no_charge: bool,
     ) -> DbResult<CollateralCheckResult>
     {
         let addr_with_space = addr.with_native_space();
@@ -1352,7 +1363,7 @@ impl StateGeneric {
             );
             self.sub_collateral_for_storage(addr, &sub, account_start_nonce)?;
         }
-        if !inc.is_zero() {
+        if !inc.is_zero() && !dry_run_no_charge {
             let balance = if is_contract {
                 self.sponsor_balance_for_collateral(addr)?
             } else {
@@ -1383,10 +1394,12 @@ impl StateGeneric {
 
     fn check_storage_limit(
         &self, original_sender: &Address, storage_limit: &U256,
-    ) -> DbResult<CollateralCheckResult> {
+        dry_run_no_charge: bool,
+    ) -> DbResult<CollateralCheckResult>
+    {
         let collateral_for_storage =
             self.collateral_for_storage(original_sender)?;
-        if collateral_for_storage > *storage_limit {
+        if collateral_for_storage > *storage_limit && !dry_run_no_charge {
             Ok(CollateralCheckResult::ExceedStorageLimit {
                 limit: *storage_limit,
                 required: collateral_for_storage,
