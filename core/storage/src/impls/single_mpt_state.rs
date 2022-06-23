@@ -120,7 +120,6 @@ impl SingleMptState {
     }
 
     fn compute_merkle_root(&mut self) -> Result<MerkleHash> {
-        debug!("single_mpt::compute_merkle_root: trie_root={:?}", self.trie_root);
         let mut cow_root = CowNodeRef::new(
             self.trie_root.clone(),
             self.owned_node_set.as_ref().unwrap(),
