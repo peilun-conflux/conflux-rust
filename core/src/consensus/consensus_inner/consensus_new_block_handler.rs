@@ -1941,7 +1941,7 @@ impl ConsensusNewBlockHandler {
             let height = inner.arena[pivot_arena_index].height;
             let mut has_storage = true;
 
-            let mut compute_epoch = false;
+            let mut compute_epoch = true;
             // Ensure that the commitments for the blocks on
             // pivot_chain after cur_era_stable_genesis are kept in memory.
             let maybe_epoch_execution_commitment = self
