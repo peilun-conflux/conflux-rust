@@ -1275,40 +1275,6 @@ impl StateGeneric {
                 total_evm_tokens,
             }
         } else {
-            // If db is not initialized, all the loaded value should be zero.
-            assert!(
-                annual_interest_rate.is_zero(),
-                "annual_interest_rate is non-zero when db is un-init"
-            );
-            assert!(
-                accumulate_interest_rate.is_zero(),
-                "accumulate_interest_rate is non-zero when db is un-init"
-            );
-            assert!(
-                total_issued_tokens.is_zero(),
-                "total_issued_tokens is non-zero when db is un-init"
-            );
-            assert!(
-                total_staking_tokens.is_zero(),
-                "total_staking_tokens is non-zero when db is un-init"
-            );
-            assert!(
-                total_storage_tokens.is_zero(),
-                "total_storage_tokens is non-zero when db is un-init"
-            );
-            assert!(
-                total_pos_staking_tokens.is_zero(),
-                "total_pos_staking_tokens is non-zero when db is un-init"
-            );
-            assert!(
-                distributable_pos_interest.is_zero(),
-                "distributable_pos_interest is non-zero when db is un-init"
-            );
-            assert!(
-                last_distribute_block == 0,
-                "last_distribute_block is non-zero when db is un-init"
-            );
-
             WorldStatistics {
                 total_issued_tokens: U256::default(),
                 total_staking_tokens: U256::default(),
