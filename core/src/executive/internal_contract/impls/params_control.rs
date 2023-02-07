@@ -4,13 +4,6 @@
 
 use std::convert::TryInto;
 
-use crate::internal_bail;
-use cfx_parameters::consensus_internal::DAO_MIN_VOTE_PERCENTAGE;
-use cfx_state::state_trait::StateOpsTrait;
-use cfx_statedb::Result as DbResult;
-use cfx_types::{Address, U256, U512};
-use lazy_static::lazy_static;
-
 use crate::{
     executive::internal_contract::{
         components::SolidityEventTrait,
@@ -18,14 +11,21 @@ use crate::{
             current_pos_staking_for_votes, settled_pos_staking_for_votes,
         },
     },
+    internal_bail,
     state::power_two_fractional,
     vm::{self, ActionParams, Spec},
 };
+use cfx_parameters::consensus_internal::DAO_MIN_VOTE_PERCENTAGE;
+use cfx_state::state_trait::StateOpsTrait;
+use cfx_statedb::Result as DbResult;
+use cfx_types::{Address, U256, U512};
+use lazy_static::lazy_static;
 
 use super::super::{
     components::InternalRefContext, contracts::params_control::*,
     impls::staking::get_vote_power,
 };
+pub use system_storage_key::storage_collateral_refund_ratio;
 
 pub fn cast_vote(
     address: Address, version: u64, votes: Vec<Vote>, params: &ActionParams,
@@ -540,6 +540,7 @@ mod system_storage_key {
     const SETTLED_VOTES_SLOT: usize = 1;
     const CURRENT_POS_STAKING_SLOT: usize = 2;
     const SETTLED_POS_STAKING_SLOT: usize = 3;
+    const STORAGE_COLLATERAL_REFUND_RATIO_SLOT: usize = 4;
 
     fn vote_stats(base: U256, index: usize, opt_index: usize) -> U256 {
         // Position of `.<topic>` (static slot)
@@ -582,9 +583,16 @@ mod system_storage_key {
     }
 
     pub(super) fn settled_pos_staking_for_votes() -> [u8; 32] {
-        // Position of `current_pos_staking` (static slot)
+        // Position of `settled_pos_staking` (static slot)
         let base = base_slot(*PARAMS_CONTROL_CONTRACT_ADDRESS)
             + U256::from(SETTLED_POS_STAKING_SLOT);
+        u256_to_array(base)
+    }
+
+    pub fn storage_collateral_refund_ratio() -> [u8; 32] {
+        // Position of `storage_collateral_refund_ratio` (static slot)
+        let base = base_slot(*PARAMS_CONTROL_CONTRACT_ADDRESS)
+            + U256::from(STORAGE_COLLATERAL_REFUND_RATIO_SLOT);
         u256_to_array(base)
     }
 }

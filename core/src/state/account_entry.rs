@@ -709,6 +709,27 @@ impl OverlayAccount {
         }
     }
 
+    pub fn storage_opt_at(
+        &self, db: &StateDbGeneric, key: &[u8],
+    ) -> DbResult<Option<U256>> {
+        if let Some(value) = self.cached_storage_at(key) {
+            return Ok(Some(value));
+        }
+        if self.fresh_storage() {
+            Ok(None)
+        } else {
+            Ok(db
+                .get::<StorageValue>(
+                    StorageKey::new_storage_key(
+                        &self.address.address,
+                        key.as_ref(),
+                    )
+                    .with_space(self.address.space),
+                )?
+                .map(|v| v.value))
+        }
+    }
+
     pub fn change_storage_value(
         &mut self, db: &StateDbGeneric, key: &[u8], value: U256,
     ) -> DbResult<()> {

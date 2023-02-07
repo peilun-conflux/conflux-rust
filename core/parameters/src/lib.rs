@@ -282,6 +282,8 @@ pub mod staking {
         pub static ref SERVICE_CHARGE_RATE_SCALE: U256 = U256::from(10000);
         /// This controls the tokens required for one PoS vote
         pub static ref POS_VOTE_PRICE: U256 = U256::from(1000)*ONE_CFX_IN_DRIP;
+        /// Storage collateral refund ratio scale.
+        pub static ref STORAGE_COLLATERAL_REFUND_RATIO_SCALE: U256 = U256::from(10000);
     }
 
     pub fn code_collateral_units(len: usize) -> u64 {
