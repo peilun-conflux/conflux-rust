@@ -1568,6 +1568,8 @@ impl StateGeneric {
                 self.world_statistics.interest_rate_per_block,
                 pos_staking_for_votes,
             );
+
+        // Initialize or update PoW base reward.
         match self.db.get_pow_base_reward()? {
             Some(old_pow_base_reward) => {
                 self.db.set_pow_base_reward(
@@ -1584,6 +1586,22 @@ impl StateGeneric {
                     None,
                 )?;
             }
+        }
+
+        // Only write storage_collateral_refund_ratio if it has been set in the
+        // db. This keeps the state unchanged before cip107 is enabled.
+        if let Some(old_storage_collateral_refund_ratio) =
+            self.get_system_storage_opt(&storage_collateral_refund_ratio())?
+        {
+            self.set_system_storage(
+                storage_collateral_refund_ratio().to_vec(),
+                vote_count
+                    .storage_collateral_refund_ratio
+                    .compute_next_params(
+                        old_storage_collateral_refund_ratio,
+                        pos_staking_for_votes,
+                    ),
+            )?;
         }
         debug!(
             "pos interest: {} base_reward:{:?}",

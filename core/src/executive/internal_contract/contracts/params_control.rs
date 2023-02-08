@@ -142,7 +142,8 @@ fn test_vote_abi_length() {
 
 pub const POW_BASE_REWARD_INDEX: u8 = 0;
 pub const POS_REWARD_INTEREST_RATE_INDEX: u8 = 1;
-pub const PARAMETER_INDEX_MAX: usize = 2;
+pub const STORAGE_COLLATERAL_REFUND_RATIO_INDEX: u8 = 2;
+pub const PARAMETER_INDEX_MAX: usize = 3;
 
 pub const OPTION_UNCHANGE_INDEX: u8 = 0;
 pub const OPTION_INCREASE_INDEX: u8 = 1;

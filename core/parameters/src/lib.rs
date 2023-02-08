@@ -109,6 +109,10 @@ pub mod consensus_internal {
     // percentage of pos staking tokens.
     // The condition is checked against each voted parameter separately.
     pub const DAO_MIN_VOTE_PERCENTAGE: u64 = 5;
+
+    /// The initial storage collateral refund ratio after CIP107 is enabled.
+    /// This is based on the scale of `STORAGE_COLLATERAL_REFUND_RATIO_SCALE`.
+    pub const CIP107_INITIAL_RATIO: u64 = 5000;
 }
 
 pub mod rpc {

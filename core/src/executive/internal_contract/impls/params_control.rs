@@ -402,6 +402,7 @@ impl ParamVoteCount {
 pub struct AllParamsVoteCount {
     pub pow_base_reward: ParamVoteCount,
     pub pos_reward_interest: ParamVoteCount,
+    pub storage_collateral_refund_ratio: ParamVoteCount,
 }
 
 /// If the vote counts are not initialized, all counts will be zero, and the
@@ -417,9 +418,14 @@ pub fn get_settled_param_vote_count<T: StateOpsTrait>(
         state,
         &SETTLED_VOTES_ENTRIES[POS_REWARD_INTEREST_RATE_INDEX as usize],
     )?;
+    let storage_collateral_refund_ratio = ParamVoteCount::from_state(
+        state,
+        &SETTLED_VOTES_ENTRIES[STORAGE_COLLATERAL_REFUND_RATIO_INDEX as usize],
+    )?;
     Ok(AllParamsVoteCount {
         pow_base_reward,
         pos_reward_interest,
+        storage_collateral_refund_ratio,
     })
 }
 
