@@ -513,7 +513,7 @@ mod storage_key {
     pub fn votes(
         address: &Address, index: usize, opt_index: usize,
     ) -> [u8; 32] {
-        const TOPIC_OFFSET: [usize; 2] = [1, 2];
+        const TOPIC_OFFSET: [usize; 3] = [1, 2, 3];
 
         // Position of `votes`
         let base = U256::from(VOTES_SLOT);

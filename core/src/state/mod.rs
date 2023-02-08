@@ -1593,6 +1593,7 @@ impl StateGeneric {
         if let Some(old_storage_collateral_refund_ratio) =
             self.get_system_storage_opt(&storage_collateral_refund_ratio())?
         {
+            debug!("old_storage_collateral_refund_ratio: {}", old_storage_collateral_refund_ratio);
             self.set_system_storage(
                 storage_collateral_refund_ratio().to_vec(),
                 vote_count
