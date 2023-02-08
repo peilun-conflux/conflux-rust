@@ -52,7 +52,7 @@ pub fn cast_vote(
 
     let mut vote_counts = [None; PARAMETER_INDEX_MAX];
     for vote in votes {
-        if vote.index >= PARAMETER_INDEX_MAX as u16 {
+        if vote.index >= params_index_max(context.spec) as u16 {
             internal_bail!("invalid vote index or opt_index");
         }
         let entry = &mut vote_counts[vote.index as usize];
@@ -72,7 +72,7 @@ pub fn cast_vote(
         // If this is the first vote in the version, even for the not-voted
         // parameters, we still reset the account's votes from previous
         // versions.
-        for index in 0..PARAMETER_INDEX_MAX {
+        for index in 0..params_index_max(context.spec) {
             if vote_counts[index].is_none() {
                 vote_counts[index] = Some([U256::zero(); OPTION_INDEX_MAX]);
             }
@@ -86,7 +86,7 @@ pub fn cast_vote(
         context.state,
     )?;
     debug!("vote_power:{}", vote_power);
-    for index in 0..PARAMETER_INDEX_MAX {
+    for index in 0..params_index_max(context.spec) {
         if vote_counts[index].is_none() {
             continue;
         }
@@ -194,7 +194,7 @@ pub fn read_vote(
     let deprecated_vote = version != current_voting_version;
 
     let mut votes_list = Vec::new();
-    for index in 0..PARAMETER_INDEX_MAX {
+    for index in 0..params_index_max(context.spec) {
         let mut param_vote = [U256::zero(); OPTION_INDEX_MAX];
         if !deprecated_vote {
             for opt_index in 0..OPTION_INDEX_MAX {
@@ -236,7 +236,7 @@ pub fn total_votes(
     };
 
     let mut answer = vec![];
-    for x in 0..PARAMETER_INDEX_MAX {
+    for x in 0..params_index_max(context.spec) {
         let slot_entry = &votes_entries[x];
         answer.push(Vote {
             index: x as u16,
@@ -440,6 +440,9 @@ pub fn get_settled_pos_staking_for_votes<T: StateOpsTrait>(
 pub fn settle_current_votes<T: StateOpsTrait>(
     state: &mut T, set_pos_staking: bool,
 ) -> DbResult<()> {
+    // Here using `PARAMETER_INDEX_MAX` without knowing the block_number is okay
+    // because if the new parameters have not been enabled, their votes will
+    // be zero and setting them will be no-op.
     for index in 0..PARAMETER_INDEX_MAX {
         for opt_index in 0..OPTION_INDEX_MAX {
             let vote_count = state
@@ -467,6 +470,14 @@ pub fn settle_current_votes<T: StateOpsTrait>(
         )?;
     }
     Ok(())
+}
+
+pub fn params_index_max(spec: &Spec) -> usize {
+    if spec.cip107 {
+        PARAMETER_INDEX_MAX
+    } else {
+        PARAMETER_INDEX_MAX - 1
+    }
 }
 
 /// Solidity variable sequences.
