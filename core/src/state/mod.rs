@@ -3,6 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use std::{
+    cmp::min,
     collections::{hash_map::Entry, HashMap, HashSet},
     sync::Arc,
 };
@@ -1487,18 +1488,20 @@ impl StateGeneric {
         let refund_max = by * self.storage_collateral_refund_ratio()?
             / *STORAGE_COLLATERAL_REFUND_RATIO_SCALE;
         let collateral = self.collateral_for_storage(address)?;
-        let refundable = if refund_max > collateral {
-            collateral
-        } else {
-            refund_max
-        };
-        let burnt = *by - refundable;
-        if !refundable.is_zero() {
+        let refundable_balance = min(refund_max, collateral);
+        let refundable_collateral = min(*by, collateral);
+        let burnt = *by - refundable_balance;
+        // It's possible that `refundable_balance` is zero while
+        // `refundable_collateral` is not.
+        if !refundable_collateral.is_zero() {
             self.require_or_new_basic_account(
                 &address.with_native_space(),
                 &account_start_nonce,
             )?
-            .sub_collateral_for_storage(&refundable);
+            .sub_collateral_for_storage(
+                &refundable_balance,
+                &refundable_collateral,
+            );
         }
         self.world_statistics.total_storage_tokens -= *by;
         self.world_statistics.total_issued_tokens -= burnt;
@@ -1593,7 +1596,10 @@ impl StateGeneric {
         if let Some(old_storage_collateral_refund_ratio) =
             self.get_system_storage_opt(&storage_collateral_refund_ratio())?
         {
-            debug!("old_storage_collateral_refund_ratio: {}", old_storage_collateral_refund_ratio);
+            debug!(
+                "old_storage_collateral_refund_ratio: {}",
+                old_storage_collateral_refund_ratio
+            );
             self.set_system_storage(
                 storage_collateral_refund_ratio().to_vec(),
                 vote_count

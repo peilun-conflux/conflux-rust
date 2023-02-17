@@ -2033,7 +2033,10 @@ impl ConsensusExecutionHandler {
         // that function will update the value after cip107 is enabled
         // here.
         if block_number == self.machine.params().transition_numbers.cip107 {
-            debug!("set storage_collateral_refund_ratio to {}", CIP107_INITIAL_RATIO);
+            debug!(
+                "set storage_collateral_refund_ratio to {}",
+                CIP107_INITIAL_RATIO
+            );
             state.set_system_storage(
                 storage_collateral_refund_ratio().to_vec(),
                 CIP107_INITIAL_RATIO.into(),
