@@ -130,6 +130,7 @@ build_config! {
         (metrics_report_interval_ms, (u64), 3_000)
         (rocksdb_disable_wal, (bool), false)
         (txgen_account_count, (usize), 10)
+        (txgen_batch_size, (usize), 1)
 
         // Genesis section.
         (adaptive_weight_beta, (u64), ADAPTIVE_WEIGHT_DEFAULT_BETA)
@@ -305,6 +306,7 @@ build_config! {
         (sync_state_starting_epoch, (Option<u64>), None)
         (sync_state_epoch_gap, (Option<u64>), None)
         (target_difficulties_cache_size_in_count, (usize), DEFAULT_TARGET_DIFFICULTIES_CACHE_SIZE_IN_COUNT)
+        (execution_prefetch_threads, (usize),  cfx_storage::defaults::DEFAULT_EXECUTION_PREFETCH_THREADS)
 
         // General/Unclassified section.
         (account_provider_refresh_time_ms, (u64), 1000)
@@ -712,6 +714,7 @@ impl Configuration {
                 self.raw_conf.generate_tx,
                 self.raw_conf.generate_tx_period_us.expect("has default"),
                 self.raw_conf.txgen_account_count,
+                self.raw_conf.txgen_batch_size,
             ))
         } else {
             None
@@ -1127,6 +1130,7 @@ impl Configuration {
     pub fn execution_config(&self) -> ConsensusExecutionConfiguration {
         ConsensusExecutionConfiguration {
             executive_trace: self.raw_conf.executive_trace,
+            prefetch_threads: self.raw_conf.execution_prefetch_threads,
         }
     }
 

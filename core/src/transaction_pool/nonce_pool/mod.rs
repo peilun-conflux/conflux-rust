@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod nonce_pool_map;
 mod weight;
 
@@ -18,6 +16,8 @@ use primitives::{SignedTransaction, Transaction};
 use std::{ops::Deref, sync::Arc};
 
 use self::nonce_pool_map::NoncePoolMap;
+
+pub use nonce_pool_map::StopReason;
 
 #[derive(Clone, Debug, DeriveMallocSizeOf)]
 pub struct TxWithReadyInfo {
@@ -285,12 +285,20 @@ impl NoncePool {
             return None;
         }
 
-        let end_nonce = self.map.continous_ready_nonce(
+        let (end_nonce, _) = self.map.continous_ready_nonce(
             tx.nonce(),
             b,
-            balance - cost_elapsed,
+            Some(balance - cost_elapsed),
         );
         Some((tx, end_nonce))
+    }
+
+    pub fn continous_ready_nonce(
+        &self, start_nonce: &U256, rest_balance: Option<U256>,
+    ) -> (U256, StopReason) {
+        let start_weight = self.map.weight(start_nonce);
+        self.map
+            .continous_ready_nonce(start_nonce, start_weight, rest_balance)
     }
 
     /// Make packing batch with readiness info (`first_tx` and

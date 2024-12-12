@@ -148,11 +148,14 @@ impl NoncePoolMap {
     /// Find last valid nonce passing the readiness check. The `start_weight`
     /// must equal to `self.weight(start_nonce)`, otherwise it may cause
     /// unexpected behaviour.
+    ///
+    /// If the `reset_balance` is `None`, it means no cost check
     #[inline]
     pub fn continous_ready_nonce(
         &self, start_nonce: &U256, start_weight: NoncePoolWeight,
-        rest_balance: U256,
-    ) -> U256 {
+        rest_balance: Option<U256>,
+    ) -> (U256, StopReason) {
+        let mut stop_reason = StopReason::NoMoreTransaction;
         let ret = self.0.search(|left_weight, node| {
             let weight =
                 NoncePoolWeight::consolidate(left_weight, &node.weight);
@@ -165,6 +168,7 @@ impl NoncePoolMap {
 
             let nonce_elapsed = node.value.nonce() - start_nonce;
             if nonce_elapsed > U256::from(u32::MAX) {
+                stop_reason = StopReason::TooManyTransaction;
                 return SearchDirection::Left;
             }
             let nonce_elapsed = nonce_elapsed.as_u32();
@@ -178,20 +182,24 @@ impl NoncePoolMap {
                 || nonce_elapsed != unpacked_elapsed
             {
                 // There should be packed transaction or missed nonce in middle
+                stop_reason = StopReason::MissingTransaction;
                 return SearchDirection::Left;
             }
 
-            if cost_elapsed > rest_balance {
+            if rest_balance.map_or(false, |balance| cost_elapsed > balance) {
+                stop_reason = StopReason::NotEnoughBalance;
                 return SearchDirection::Left;
             }
 
             SearchDirection::RightOrStop(weight)
         });
-        if let Some(SearchResult::Found { node, .. }) = ret {
-            *node.value.nonce()
-        } else {
-            *start_nonce
-        }
+        let last_valid_nonce =
+            if let Some(SearchResult::Found { node, .. }) = ret {
+                *node.value.nonce()
+            } else {
+                *start_nonce
+            };
+        (last_valid_nonce, stop_reason)
     }
 
     /// return the next item with nonce >= given nonce
@@ -225,4 +233,12 @@ impl MallocSizeOf for NoncePoolMap {
     fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
         self.0.size_of(ops)
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum StopReason {
+    NoMoreTransaction,
+    TooManyTransaction,
+    MissingTransaction,
+    NotEnoughBalance,
 }

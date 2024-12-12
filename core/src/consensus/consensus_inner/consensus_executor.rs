@@ -24,10 +24,7 @@ use cfx_internal_common::{
 };
 use cfx_parameters::consensus::*;
 use cfx_statedb::{ErrorKind as DbErrorKind, Result as DbResult, StateDb};
-use cfx_storage::{
-    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, StateIndex,
-    StorageManagerTrait,
-};
+use cfx_storage::{StateIndex, StorageManagerTrait};
 use cfx_types::{
     address_util::AddressUtil, AddressSpaceUtil, AllChainID, BigEndianHash,
     Space, H160, H256, KECCAK_EMPTY_BLOOM, U256, U512,
@@ -77,6 +74,7 @@ use cfx_executor::{
         State,
     },
 };
+use cfx_storage::defaults::DEFAULT_EXECUTION_PREFETCH_THREADS;
 use cfx_vm_types::{Env, Spec};
 
 lazy_static! {
@@ -1945,4 +1943,5 @@ impl ConsensusExecutionHandler {
 
 pub struct ConsensusExecutionConfiguration {
     pub executive_trace: bool,
+    pub prefetch_threads: usize,
 }

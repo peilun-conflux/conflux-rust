@@ -13,7 +13,10 @@ use cfx_parameters::{
     tx_pool::TXPOOL_DEFAULT_NONCE_BITS,
     WORKER_COMPUTATION_PARALLELISM,
 };
-use cfx_storage::{StorageConfiguration, StorageManager};
+use cfx_storage::{
+    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, StorageConfiguration,
+    StorageManager,
+};
 use cfx_types::{
     address_util::AddressUtil, Address, AddressSpaceUtil, AllChainID, H256,
     U256,
@@ -272,6 +275,7 @@ pub fn initialize_synchronization_graph_with_data_manager(
         notifications.clone(),
         ConsensusExecutionConfiguration {
             executive_trace: false,
+            prefetch_threads: DEFAULT_EXECUTION_PREFETCH_THREADS,
         },
         verification_config.clone(),
         NodeType::Archive,

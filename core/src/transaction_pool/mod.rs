@@ -9,6 +9,7 @@ mod transaction_pool_inner;
 
 extern crate rand;
 
+use self::nonce_pool::StopReason;
 pub use self::transaction_pool_inner::TransactionStatus;
 use crate::{
     block_data_manager::BlockDataManager,
@@ -223,6 +224,32 @@ impl TransactionPool {
             .get_state_account_info(address)
             .unwrap_or((0.into(), 0.into()));
         self.inner.read().get_next_nonce(address, state_nonce)
+    }
+
+    pub fn get_next_nonce_for_tx_gen(
+        &self, address: &Address, required_balance: U256,
+    ) -> Option<U256> {
+        let (state_nonce, balance) =
+            self.get_state_account_info(address).expect("db error");
+        if balance < required_balance {
+            return None;
+        }
+
+        let (last_valid_nonce, stop_reason) =
+            self.inner.read().continous_ready_nonce(
+                address,
+                state_nonce,
+                Some(balance - required_balance),
+            );
+
+        match stop_reason {
+            StopReason::NoMoreTransaction | StopReason::MissingTransaction => {
+                Some(last_valid_nonce + 1)
+            }
+            StopReason::TooManyTransaction | StopReason::NotEnoughBalance => {
+                None
+            }
+        }
     }
 
     pub fn get_account_pending_info(
