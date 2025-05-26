@@ -27,4 +27,4 @@ tempdir = "0.3.7"
 
 [dependencies.rocksdb]
 git = "https://github.com/Conflux-Chain/rust-rocksdb.git"
-rev = "a1ce5bd3322a7b732dfb300c2571dc4d99f1edae"
+rev = "f42a47efa918ebccf1f49076c96051af67d9893f"
