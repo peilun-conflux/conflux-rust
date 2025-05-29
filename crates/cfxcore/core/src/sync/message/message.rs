@@ -54,6 +54,7 @@ build_msgid! {
     STATUS_V2 = 0x22
     STATUS_V3 = 0x23
     HEARTBEAT = 0x24
+    NEW_TRANSACTIONS = 0x25
 
     // This is only used in inflight_keys.
     NET_INFLIGHT_BLOCKS = 0xf0

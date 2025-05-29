@@ -49,6 +49,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use crate::sync::message::{Transactions};
 
 lazy_static! {
     static ref TX_PROPAGATE_METER: Arc<dyn Meter> =
@@ -1350,116 +1351,19 @@ impl SynchronizationProtocolHandler {
         if lucky_peers.is_empty() {
             return;
         }
+        let txs = self.get_to_propagate_trans().into_values().map(|tx| tx.transaction.clone()).collect::<Vec<_>>();
 
-        // 29 since the remaining bytes is 29.
-        let mut nonces: Vec<(u64, u64)> = (0..lucky_peers.len())
-            .map(|_| (rand::rng().random(), rand::rng().random()))
-            .collect();
-
-        let mut short_ids_part: Vec<Vec<u8>> = vec![vec![]; lucky_peers.len()];
-        let mut tx_hashes_part: Vec<H256> = vec![];
-        let (short_ids_transactions, tx_hashes_transactions) = {
-            let mut transactions = self.get_to_propagate_trans();
-            if transactions.is_empty() {
-                return;
-            }
-
-            let mut total_tx_bytes = 0;
-            let mut short_ids_transactions: Vec<Arc<SignedTransaction>> =
-                Vec::new();
-            let mut tx_hashes_transactions: Vec<Arc<SignedTransaction>> =
-                Vec::new();
-
-            let received_pool =
-                self.request_manager.received_transactions.read();
-            for (_, tx) in transactions.iter() {
-                total_tx_bytes += tx.rlp_size();
-                if total_tx_bytes >= MAX_TXS_BYTES_TO_PROPAGATE {
-                    break;
-                }
-                if received_pool.group_overflow_from_tx_hash(&tx.hash()) {
-                    tx_hashes_transactions.push(tx.clone());
-                } else {
-                    short_ids_transactions.push(tx.clone());
-                }
-            }
-
-            if short_ids_transactions.len() + tx_hashes_transactions.len()
-                != transactions.len()
-            {
-                for tx in short_ids_transactions.iter() {
-                    transactions.remove(&tx.hash);
-                }
-                for tx in tx_hashes_transactions.iter() {
-                    transactions.remove(&tx.hash);
-                }
-                self.set_to_propagate_trans(transactions);
-            }
-
-            (short_ids_transactions, tx_hashes_transactions)
-        };
-        debug!(
-            "Send short ids:{}, Send tx hashes:{}",
-            short_ids_transactions.len(),
-            tx_hashes_transactions.len()
-        );
-        for tx in &short_ids_transactions {
-            for i in 0..lucky_peers.len() {
-                //consist of [one random position byte, and last three
-                // bytes]
-                TransactionDigests::append_short_id(
-                    &mut short_ids_part[i],
-                    nonces[i].0,
-                    nonces[i].1,
-                    &tx.hash(),
-                );
-            }
-        }
-        let mut sent_transactions = short_ids_transactions.clone();
-        if !tx_hashes_transactions.is_empty() {
-            TX_HASHES_PROPAGATE_METER.mark(tx_hashes_transactions.len());
-            for tx in &tx_hashes_transactions {
-                TransactionDigests::append_tx_hash(
-                    &mut tx_hashes_part,
-                    tx.hash(),
-                );
-            }
-            sent_transactions.extend(tx_hashes_transactions.clone());
-        }
-
-        TX_PROPAGATE_METER.mark(sent_transactions.len());
-
-        if sent_transactions.len() == 0 {
-            return;
-        }
-
-        debug!(
-            "Sent {} transaction ids to {} peers.",
-            sent_transactions.len(),
-            lucky_peers.len()
-        );
-
-        let window_index = self
-            .request_manager
-            .append_sent_transactions(sent_transactions);
-
-        let mut resend_flag = false;
         for i in 0..lucky_peers.len() {
             let peer_id = lucky_peers[i];
-            let (key1, key2) = nonces.pop().unwrap();
-            let tx_msg = TransactionDigests::new(
-                window_index,
-                key1,
-                key2,
-                short_ids_part.pop().unwrap(),
-                tx_hashes_part.clone(),
-            );
+            let tx_msg = Transactions {
+                transactions: txs.clone(),
+            };
             match tx_msg.send(io, &peer_id) {
                 Ok(_) => {
                     trace!(
                         "{:02} <- Transactions ({} entries)",
                         peer_id,
-                        tx_msg.len()
+                        tx_msg.transactions.len()
                     );
                 }
                 Err(e) => {
@@ -1467,21 +1371,8 @@ impl SynchronizationProtocolHandler {
                         "failed to propagate transaction ids to peer, id: {}, err: {}",
                         peer_id, e
                     );
-                    resend_flag = true;
                 }
             }
-        }
-
-        if resend_flag {
-            let mut resend_transactions: HashMap<H256, Arc<SignedTransaction>> =
-                HashMap::new();
-            for tx in short_ids_transactions {
-                resend_transactions.insert(tx.hash, tx.clone());
-            }
-            for tx in tx_hashes_transactions {
-                resend_transactions.insert(tx.hash, tx.clone());
-            }
-            self.set_to_propagate_trans(resend_transactions);
         }
     }
 
