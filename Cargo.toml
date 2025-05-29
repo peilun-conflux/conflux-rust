@@ -108,7 +108,7 @@ members = [
     "crates/rpc/rpc-middlewares",
     "crates/tasks",
     "crates/eest_types",
-    "crates/config", "bins/hash_collision",
+    "crates/config",
 ]
 
 resolver = "2"
