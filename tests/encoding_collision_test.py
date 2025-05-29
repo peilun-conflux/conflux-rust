@@ -1,12 +1,14 @@
 import json
 import os.path
 import pickle
+import random
 import subprocess
 import time
 from threading import Thread
 
 import eth_utils
 import rlp
+import siphash
 from cfx_account import Account
 
 from conflux.config import default_config
@@ -14,7 +16,7 @@ from conflux.rpc import RpcClient
 from test_framework.test_framework import ConfluxTestFramework
 from test_framework.util import assert_equal
 
-collision_tx_file = "collision_tx.json"
+collision_tx_file = "encoding_collision_tx.json"
 
 class HashCollisionTest(ConfluxTestFramework):
     def set_test_params(self):
@@ -56,20 +58,25 @@ class HashCollisionTest(ConfluxTestFramework):
                 time.sleep(0.5)
 
     def generate_collision_txs(self, tx):
+        # guess the random key between nodes
         tx_list = []
         accounts = []
-        for _ in range(100):
-            account = Account.create()
-            value = 0
-            while True:
-                new_tx = self.client.new_tx(priv_key=account.key.hex(), value=value, sign=True)
-                if tx.hash_hex()[-3:] == new_tx.hash_hex()[-3:]:
-                    print("fixed byte collision tx found", value)
-                    accounts.append(account.address)
-                    tx_list.append(eth_utils.encode_hex(rlp.encode(new_tx)))
-                    break
-                else:
-                    value += 1
+        for _ in range(10):
+            print("guess a new key")
+            key = random.randbytes(16)
+            for _ in range(100):
+                account = Account.create()
+                value = 0
+                while True:
+                    new_tx = self.client.new_tx(priv_key=account.key.hex(), value=value, sign=True)
+                    if (siphash.siphash24(key, new_tx.hash).hexdigest()[0]
+                            == siphash.siphash24(key, tx.hash).hexdigest()[0]):
+                        print("random byte collision tx found", value)
+                        accounts.append(account.address)
+                        tx_list.append(eth_utils.encode_hex(rlp.encode(new_tx)))
+                        break
+                    else:
+                        value += 1
         return accounts, tx_list
 
 def async_send_txs(client, txs):
