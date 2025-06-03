@@ -154,6 +154,11 @@ pub mod msg_sender {
                 "network_connection_data_counter",
                 "other_high_meter_counter"
             );
+        static ref TRANSACTIONS_METER: Arc<dyn Meter> =
+            register_meter_with_group(
+                "network_connection_data",
+                "transactions"
+            );
     }
     lazy_static! {
         static ref ON_STATUS_METER: Arc<dyn Meter> =
@@ -399,6 +404,10 @@ pub mod msg_sender {
             msgid::GET_BLOCK_HASHES_RESPONSE => {
                 GET_BLOCK_HASHES_RESPONSE_METER.mark(size);
                 GET_BLOCK_HASHES_RESPONSE_COUNTER.mark(1);
+            }
+            msgid::TRANSACTIONS => {
+                TRANSACTIONS_METER.mark(size);
+                TRANSACTIONS_COUNTER.mark(1);
             }
             _ => {
                 OTHER_HIGH_METER.mark(size);
