@@ -194,42 +194,45 @@ impl TransactionGenerator {
                 .txpool
                 .get_state_account_info(&sender_address.with_native_space())
                 .unwrap();
+            trace!("nonce={:?} sender_nonce={:?} balance={:?}", nonce, sender_nonce, balance);
             if nonce.cmp(sender_nonce) != Ordering::Equal {
                 *sender_nonce = nonce.clone();
                 balance_map.insert(sender_address.clone(), balance.clone());
             }
             trace!(
-                "receiver={:?} value={:?} nonce={:?}",
+                "receiver={:?} sender={:?} value={:?} nonce={:?}",
                 receiver_address,
+                sender_address,
                 balance_to_transfer,
                 sender_nonce
             );
             // Generate the transaction, sign it, and push into the transaction
             // pool
-            let (action, value, data) = match &erc20_address {
-                None => (Action::Call(receiver_address), balance_to_transfer, Bytes::new()),
+            let (action, value, data, gas) = match &erc20_address {
+                None => (Action::Call(receiver_address), balance_to_transfer, Bytes::new(), 21000.into()),
                 Some(address) => {
                     let action = Action::Call(*address);
                     let data = (String::new()
                         + "a9059cbb000000000000000000000000"
-                        + &receiver_address.0.to_hex::<String>()[2..]
+                        + &receiver_address.0.to_hex::<String>()
                         + {
                         let h: H256 =
                             BigEndianHash::from_uint(&balance_to_transfer);
-                        &h.0.to_hex::<String>()[2..]
+                        &h.0.to_hex::<String>()
                     })
                         .from_hex()
                         .unwrap();
-                    (action, 0.into(), data)
+                    trace!("action={:?} data={:?}", action, data);
+                    (action, 0.into(), data, 150000.into())
                 }
             };
             let tx: Transaction = NativeTransaction {
                 nonce: *sender_nonce,
                 gas_price: U256::from(1u64),
-                gas: U256::from(21000u64),
+                gas,
                 value,
                 action,
-                storage_limit: 0,
+                storage_limit: 512,
                 chain_id: txgen.consensus.best_chain_id().in_native_space(),
                 epoch_height: txgen.consensus.best_epoch_number(),
                 data,

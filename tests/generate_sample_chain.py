@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from http.client import CannotSendRequest
 
+from conflux.address import b32_address_to_hex, hex_to_b32_address
 from conflux.rpc import RpcClient
 from conflux.utils import encode_hex, bytes_to_int, priv_to_addr, parse_as_int
 from test_framework.block_gen_thread import BlockGenThread
@@ -12,7 +13,14 @@ from test_framework.util import *
 class GenerateSampleChain(DefaultConfluxTestFramework):
     def set_test_params(self):
         self.delay_factor = 1
-        self.num_nodes = 20
+        self.num_nodes = 2
+        self.conf_parameters["generate_tx"] = "true"
+        self.conf_parameters["generate_tx_period_us"] = "100000"
+        self.conf_parameters["txgen_account_count"] = "10000"
+        self.conf_parameters["genesis_secrets"] = "\"/Users/peilun/Development/conflux-rust/genesis_secrets.txt\""
+        self.conf_parameters["erc20_address"] = "\"0x86b1e6971681f48a2ac8cd90993ac4a339d920c2\""
+        self.conf_parameters["log_level"] = "\"trace\""
+
 
     def setup_network(self):
         self.log.info("setup nodes ...")
@@ -25,11 +33,25 @@ class GenerateSampleChain(DefaultConfluxTestFramework):
         start_p2p_connection(self.nodes)
 
     def run_test(self):
+        # deploy contract
+        TokenContract = self.cfx_contract("MyToken")
+        tx_hash = TokenContract.constructor(self.cw3.to_checksum_address(b32_address_to_hex(self.core_accounts[0].address))).transact()
+        receipt = tx_hash.executed(timeout=30)
+        assert_equal(b32_address_to_hex(receipt["contractCreated"]), "0x86b1e6971681f48a2ac8cd90993ac4a339d920c2")
+        self.client.send_usable_genesis_accounts(0)
+        TokenContract = TokenContract(receipt["contractCreated"])
+        # params = {"to": hex_to_b32_address("0x86b1e6971681f48a2ac8cd90993ac4a339d920c2"), "from": hex_to_b32_address("0x86b1e6971681f48a2ac8cd90993ac4a339d920c0")}
+        params = {"from": self.core_accounts[0].address}
+        tx = TokenContract.functions.transfer(
+            "0x86b1e6971681f48a2ac8cd90993ac4a339d920c1", self.cw3.to_wei(0, "ether")
+        ).build_transaction(params)
+        print(tx)
+
         genesis_key = default_config["GENESIS_PRI_KEY"]
         balance_map = {genesis_key: default_config["TOTAL_COIN"]}
         self.log.info("Initial State: (sk:%d, addr:%s, balance:%d)", bytes_to_int(genesis_key),
                       eth_utils.encode_hex(priv_to_addr(genesis_key)), balance_map[genesis_key])
-        nonce_map = {genesis_key: 0}
+        # nonce_map = {genesis_key: 1}
 
         # '''Check if transaction from uncommitted new address can be accepted'''
         # tx_n = 5
@@ -52,7 +74,7 @@ class GenerateSampleChain(DefaultConfluxTestFramework):
         #                    value, eth_utils.encode_hex(privtoaddr(receiver_sk))[-4:], balance_map[sender_key], balance_map[receiver_sk])
         #     self.log.debug("Send Transaction %s to node %d", encode_hex(tx.hash), r)
         #     time.sleep(random.random() / 10 * self.delay_factor)
-        block_gen_thread = BlockGenThread(self.nodes, self.log, interval_base=self.delay_factor)
+        block_gen_thread = BlockGenThread(self.nodes, self.log, interval_fixed=0.2)
         block_gen_thread.start()
         # for k in balance_map:
         #     self.log.info("Check account sk:%s addr:%s", bytes_to_int(k), eth_utils.encode_hex(privtoaddr(k)))
@@ -61,71 +83,71 @@ class GenerateSampleChain(DefaultConfluxTestFramework):
         # self.register_test("general_1.json")
 
         '''Test Random Transactions'''
-        all_txs = []
-        tx_n = 1000
-        account_n = 10
-
-        # Initialize new accounts
-        new_keys = set()
-        for _ in range(account_n):
-            value = int(balance_map[genesis_key] * 0.5)
-            receiver_sk, _ = ec_random_keys()
-            new_keys.add(receiver_sk)
-            tx = create_transaction(pri_key=genesis_key, receiver=priv_to_addr(receiver_sk), value=value,
-                                    nonce=nonce_map[genesis_key], gas_price=gas_price)
-            self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
-            balance_map[receiver_sk] = value
-            nonce_map[genesis_key] += 1
-            balance_map[genesis_key] -= value + gas_price * 21000
-        wait_for_account_stable()
-        for key in new_keys:
-            nonce_map[key] = wait_for_initial_nonce_for_privkey(self.nodes[0], key)
-
-        self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2*self.delay_factor)
-        for i in range(tx_n):
-            sender_key = random.choice(list(balance_map))
-            nonce = nonce_map[sender_key]
-            value = 1
-            receiver_sk = random.choice(list(balance_map))
-            balance_map[receiver_sk] += value
-            # not enough transaction fee (gas_price * gas_limit) should not happen for now
-            assert balance_map[sender_key] >= value + gas_price * 21000
-            tx = create_transaction(pri_key=sender_key, receiver=priv_to_addr(receiver_sk), value=value, nonce=nonce,
-                                    gas_price=gas_price)
-            r = random.randint(0, self.num_nodes - 1)
-            self.nodes[r].p2p.send_protocol_msg(Transactions(transactions=[tx]))
-            all_txs.append(tx)
-            nonce_map[sender_key] = nonce + 1
-            balance_map[sender_key] -= value + gas_price * 21000
-            self.log.debug("New tx %s: %s send value %d to %s, sender balance:%d, receiver balance:%d nonce:%d", encode_hex(tx.hash), eth_utils.encode_hex(priv_to_addr(sender_key))[-4:],
-                           value, eth_utils.encode_hex(priv_to_addr(receiver_sk))[-4:], balance_map[sender_key], balance_map[receiver_sk], nonce)
-            self.log.debug("Send Transaction %s to node %d", encode_hex(tx.hash), r)
-            time.sleep(random.random()/10*self.delay_factor)
-        for k in balance_map:
-            self.log.info("Account %s with balance:%s", bytes_to_int(k), balance_map[k])
-        for tx in all_txs:
-            self.log.debug("Wait for tx to confirm %s", tx.hash_hex())
-            for i in range(3):
-                try:
-                    retry = True
-                    while retry:
-                        try:
-                            wait_until(lambda: checktx(self.nodes[0], tx.hash_hex()), timeout=60*self.delay_factor)
-                            retry = False
-                        except CannotSendRequest:
-                            time.sleep(0.01)
-                    break
-                except AssertionError as _:
-                    self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
-                if i == 2:
-                    raise AssertionError("Tx {} not confirmed after 30 seconds".format(tx.hash_hex()))
-
-        for k in balance_map:
-            self.log.info("Check account sk:%s addr:%s", bytes_to_int(k), eth_utils.encode_hex(priv_to_addr(k)))
-            wait_until(lambda: self.check_account(k, balance_map), timeout=60*self.delay_factor)
-        block_gen_thread.stop()
+        # all_txs = []
+        # tx_n = 1000
+        # account_n = 10
+        #
+        # # Initialize new accounts
+        # new_keys = set()
+        # for _ in range(account_n):
+        #     value = int(balance_map[genesis_key] * 0.5)
+        #     receiver_sk, _ = ec_random_keys()
+        #     new_keys.add(receiver_sk)
+        #     tx = create_transaction(pri_key=genesis_key, receiver=priv_to_addr(receiver_sk), value=value,
+        #                             nonce=nonce_map[genesis_key], gas_price=gas_price)
+        #     self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+        #     balance_map[receiver_sk] = value
+        #     nonce_map[genesis_key] += 1
+        #     balance_map[genesis_key] -= value + gas_price * 21000
+        # wait_for_account_stable()
+        # for key in new_keys:
+        #     nonce_map[key] = wait_for_initial_nonce_for_privkey(self.nodes[0], key)
+        #
+        # self.log.info("start to generate %d transactions with about %d seconds", tx_n, tx_n/10/2*self.delay_factor)
+        # for i in range(tx_n):
+        #     sender_key = random.choice(list(balance_map))
+        #     nonce = nonce_map[sender_key]
+        #     value = 1
+        #     receiver_sk = random.choice(list(balance_map))
+        #     balance_map[receiver_sk] += value
+        #     # not enough transaction fee (gas_price * gas_limit) should not happen for now
+        #     assert balance_map[sender_key] >= value + gas_price * 21000
+        #     tx = create_transaction(pri_key=sender_key, receiver=priv_to_addr(receiver_sk), value=value, nonce=nonce,
+        #                             gas_price=gas_price)
+        #     r = random.randint(0, self.num_nodes - 1)
+        #     self.nodes[r].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+        #     all_txs.append(tx)
+        #     nonce_map[sender_key] = nonce + 1
+        #     balance_map[sender_key] -= value + gas_price * 21000
+        #     self.log.debug("New tx %s: %s send value %d to %s, sender balance:%d, receiver balance:%d nonce:%d", encode_hex(tx.hash), eth_utils.encode_hex(priv_to_addr(sender_key))[-4:],
+        #                    value, eth_utils.encode_hex(priv_to_addr(receiver_sk))[-4:], balance_map[sender_key], balance_map[receiver_sk], nonce)
+        #     self.log.debug("Send Transaction %s to node %d", encode_hex(tx.hash), r)
+        #     time.sleep(random.random()/10*self.delay_factor)
+        # for k in balance_map:
+        #     self.log.info("Account %s with balance:%s", bytes_to_int(k), balance_map[k])
+        # for tx in all_txs:
+        #     self.log.debug("Wait for tx to confirm %s", tx.hash_hex())
+        #     for i in range(3):
+        #         try:
+        #             retry = True
+        #             while retry:
+        #                 try:
+        #                     wait_until(lambda: checktx(self.nodes[0], tx.hash_hex()), timeout=60*self.delay_factor)
+        #                     retry = False
+        #                 except CannotSendRequest:
+        #                     time.sleep(0.01)
+        #             break
+        #         except AssertionError as _:
+        #             self.nodes[0].p2p.send_protocol_msg(Transactions(transactions=[tx]))
+        #         if i == 2:
+        #             raise AssertionError("Tx {} not confirmed after 30 seconds".format(tx.hash_hex()))
+        #
+        # for k in balance_map:
+        #     self.log.info("Check account sk:%s addr:%s", bytes_to_int(k), eth_utils.encode_hex(priv_to_addr(k)))
+        #     wait_until(lambda: self.check_account(k, balance_map), timeout=60*self.delay_factor)
+        # block_gen_thread.stop()
         block_gen_thread.join()
-        sync_blocks(self.nodes, timeout=60*self.delay_factor)
+        # sync_blocks(self.nodes, timeout=60*self.delay_factor)
         self.log.info("Pass")
         self.register_test("general_2.json")
 

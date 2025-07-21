@@ -310,6 +310,8 @@ impl ConsensusExecutionHandler {
 
         if r.receipt.tx_success() {
             GOOD_TPS_METER.mark(1);
+        } else {
+            trace!("tx failed: {:?}", r.tx_exec_error_msg);
         }
 
         let tx_skipped = r.receipt.tx_skipped();
