@@ -114,6 +114,7 @@ impl TransactionGenerator {
         txgen: Arc<TransactionGenerator>,
         tx_config: TransactionGeneratorConfig,
         genesis_accounts: HashMap<Address, U256>,
+        erc20_address: Option<Address>,
     ) {
         loop {
             let account_start = txgen.account_start_index.read();
@@ -126,7 +127,6 @@ impl TransactionGenerator {
         let mut balance_map: HashMap<Address, U256> = HashMap::new();
         let mut address_secret_pair: HashMap<Address, Secret> = HashMap::new();
         let mut addresses: Vec<Address> = Vec::new();
-
         debug!("Tx Generation Config {:?}", tx_config.generate_tx);
 
         let mut tx_n = 0;
@@ -206,16 +206,33 @@ impl TransactionGenerator {
             );
             // Generate the transaction, sign it, and push into the transaction
             // pool
+            let (action, value, data) = match &erc20_address {
+                None => (Action::Call(receiver_address), balance_to_transfer, Bytes::new()),
+                Some(address) => {
+                    let action = Action::Call(*address);
+                    let data = (String::new()
+                        + "a9059cbb000000000000000000000000"
+                        + &receiver_address.0.to_hex::<String>()[2..]
+                        + {
+                        let h: H256 =
+                            BigEndianHash::from_uint(&balance_to_transfer);
+                        &h.0.to_hex::<String>()[2..]
+                    })
+                        .from_hex()
+                        .unwrap();
+                    (action, 0.into(), data)
+                }
+            };
             let tx: Transaction = NativeTransaction {
                 nonce: *sender_nonce,
                 gas_price: U256::from(1u64),
                 gas: U256::from(21000u64),
-                value: balance_to_transfer,
-                action: Action::Call(receiver_address),
+                value,
+                action,
                 storage_limit: 0,
                 chain_id: txgen.consensus.best_chain_id().in_native_space(),
                 epoch_height: txgen.consensus.best_epoch_number(),
-                data: Bytes::new(),
+                data,
             }
             .into();
 

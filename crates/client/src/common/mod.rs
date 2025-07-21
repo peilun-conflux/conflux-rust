@@ -62,7 +62,7 @@ use tokio::runtime::Runtime as TokioRuntime;
 use txgen::{DirectTransactionGenerator, TransactionGenerator};
 
 use cfx_config::{parse_config_address_string, Configuration};
-
+use cfx_vm_types::{contract_address, CreateContractAddress};
 use crate::{
     accounts::{account_provider, keys_path},
     rpc::{
@@ -774,6 +774,19 @@ pub fn initialize_txgens(
         None
     };
 
+    let mut erc20_address = contract_address(
+        CreateContractAddress::FromSenderNonceAndCodeHash,
+        // A fake block_number. There field is unnecessary in Ethereum
+        // replay test.
+        0,
+        &public_to_address(DEV_GENESIS_KEY_PAIR_2.public(), true),
+        &0.into(),
+        // A fake code. There field is unnecessary in Ethereum replay test.
+        &[],
+    )
+        .0;
+    erc20_address.set_contract_type_bits();
+
     // This tx generator generates transactions from preconfigured multiple
     // genesis accounts and it pushes transactions into transaction pool.
     let maybe_multi_genesis_txgen = if let Some(txgen_conf) =
@@ -787,6 +800,7 @@ pub fn initialize_txgens(
         ));
         if txgen_conf.generate_tx {
             let txgen_clone = multi_genesis_txgen.clone();
+            let use_erc20 = conf.raw_conf.use_erc20;
             let join_handle =
                 thread::Builder::new()
                     .name("txgen".into())
@@ -795,6 +809,7 @@ pub fn initialize_txgens(
                             txgen_clone,
                             txgen_conf,
                             genesis_accounts,
+                            if use_erc20 {Some(erc20_address)} else {None},
                         );
                     })
                     .expect("should succeed");

@@ -150,6 +150,7 @@ build_config! {
         (genesis_accounts, (Option<String>), None)
         (genesis_evm_secrets, (Option<String>), None)
         (genesis_secrets, (Option<String>), None)
+        (use_erc20, (bool), false)
         (pivot_hint_path, (Option<String>), None)
         (pivot_hint_checksum, (Option<String>), None)
         (initial_difficulty, (Option<u64>), None)
