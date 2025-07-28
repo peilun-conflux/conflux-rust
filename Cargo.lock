@@ -2011,6 +2011,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.5.1",
  "ripemd160",
+ "rust-dilithium2",
  "serde",
  "serde-name",
  "serde_bytes",

@@ -11,11 +11,15 @@
 //! nightly build.
 #![cfg_attr(mirai, allow(incomplete_features), feature(const_generics))]
 
+
 //! A library supplying various cryptographic primitives
+//!
+extern crate rust_dilithium2 as rdil;
 
 /// A BLS signature wrapper
 pub mod bls;
 pub mod compat;
+pub mod dilithium;
 /// A Elliptic Curve VRF wrapper
 pub mod ec_vrf;
 pub mod ed25519;
@@ -49,6 +53,7 @@ pub use hash::HashValue;
 pub use once_cell as _once_cell;
 #[doc(hidden)]
 pub use serde_name as _serde_name;
+
 
 // We use [formally verified arithmetic](https://crates.io/crates/fiat-crypto)
 // in maintained forks of the dalek suite of libraries ({curve, ed,

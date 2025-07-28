@@ -387,6 +387,11 @@ pub(crate) mod private {
     impl Sealed for crate::ec_vrf::EcVrfPublicKey {}
     impl Sealed for crate::ec_vrf::EcVrfPrivateKey {}
     impl Sealed for crate::ec_vrf::EcVrfProof {}
+
+    impl Sealed for crate::dilithium::DilithiumPublicKey {}
+    impl Sealed for crate::dilithium::DilithiumPrivateKey {}
+    impl Sealed for crate::dilithium::DilithiumSignature {}
+
 }
 
 /// Hash the vrf output and a nonce within the proposer's voting power to
