@@ -18,6 +18,8 @@ use move_core_types::move_resource::MoveResource;
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
+use diem_crypto::dilithium::{DilithiumPrivateKey, DilithiumPublicKey, DilithiumSignature};
+use diem_crypto::multi_dilithium::{MultiDilithiumPublicKey, MultiDilithiumSignature};
 
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq, Default)]
 pub struct ValidatorConfigResource {
@@ -82,12 +84,11 @@ impl ValidatorConfig {
 }
 
 // TODO(lpl): Put this in a proper place.
-pub type ConsensusPublicKey = BLSPublicKey;
-pub type ConsensusPrivateKey = BLSPrivateKey;
-pub type ConsensusSignature = BLSSignature;
+pub type ConsensusPublicKey = DilithiumPublicKey;
+pub type ConsensusPrivateKey = DilithiumPrivateKey;
+pub type ConsensusSignature = DilithiumSignature;
 pub type ConsensusVRFPublicKey = EcVrfPublicKey;
 pub type ConsensusVRFPrivateKey = EcVrfPrivateKey;
 pub type ConsensusVRFProof = EcVrfProof;
-pub type MultiConsensusPublicKey = MultiBLSPublicKey;
-pub type MultiConsensusPrivateKey = MultiBLSPrivateKey;
-pub type MultiConsensusSignature = MultiBLSSignature;
+pub type MultiConsensusPublicKey = MultiDilithiumPublicKey;
+pub type MultiConsensusSignature = MultiDilithiumSignature;

@@ -75,13 +75,7 @@ impl From<&PrimitiveValidatorConsensusInfo> for ValidatorConsensusInfo {
     fn from(value: &PrimitiveValidatorConsensusInfo) -> Self {
         Self {
             public_key: value
-                .public_key()
-                .clone()
-                .raw()
-                .as_affine()
-                .to_compressed()
-                .to_vec()
-                .into(),
+                .public_key().to_bytes().into(),
             vrf_public_key: value
                 .vrf_public_key()
                 .clone()

@@ -26,6 +26,9 @@ use proptest_derive::Arbitrary;
 use rand::{rngs::OsRng, Rng};
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt, str::FromStr};
+use diem_crypto::dilithium::{DilithiumPublicKey, DilithiumSignature};
+use diem_crypto::multi_dilithium::{MultiDilithiumPublicKey, MultiDilithiumSignature};
+use crate::transaction::SignatureCheckedTransaction;
 
 /// A `TransactionAuthenticator` is an an abstraction of a signature scheme. It
 /// must know: (1) How to check its signature against a message and public key
@@ -49,6 +52,8 @@ pub enum Scheme {
     MultiEd25519 = 1,
     BLS = 2,
     MultiBLS = 3,
+    Dilithium = 4,
+    MultiDilithium = 5,
     // ... add more schemes here
 }
 
@@ -59,6 +64,8 @@ impl fmt::Display for Scheme {
             Scheme::MultiEd25519 => "MultiEd25519",
             Scheme::BLS => "bls",
             Scheme::MultiBLS => "multi_bls",
+            Scheme::Dilithium => "dilithium",
+            Scheme::MultiDilithium => "multi_dilithium",
         };
         write!(f, "Scheme::{}", display)
     }
@@ -84,6 +91,13 @@ pub enum TransactionAuthenticator {
     MultiBLS {
         signature: MultiBLSSignature,
     }, // ... add more schemes here
+    Dilithium {
+        public_key: DilithiumPublicKey,
+        signature: DilithiumSignature,
+    },
+    MultiDilithium {
+        signature: MultiDilithiumSignature,
+    }
 }
 
 #[derive(Deserialize)]
@@ -144,6 +158,8 @@ impl TransactionAuthenticator {
             Self::MultiEd25519 { .. } => Scheme::MultiEd25519,
             Self::BLS { .. } => Scheme::BLS,
             Self::MultiBLS { .. } => Scheme::MultiBLS,
+            Self::Dilithium { .. } => Scheme::Dilithium,
+            Self::MultiDilithium { .. } => Scheme::MultiDilithium,
         }
     }
 
@@ -178,6 +194,17 @@ impl TransactionAuthenticator {
         Self::MultiBLS { signature }
     }
 
+    pub fn dilithium(public_key: DilithiumPublicKey, signature: DilithiumSignature) -> Self {
+        Self::Dilithium {
+            public_key,
+            signature
+        }
+    }
+
+    pub fn multi_dilithium(signature: MultiDilithiumSignature) -> Self {
+        Self::MultiDilithium { signature }
+    }
+
     /// Return Ok if the authenticator's public key matches its signature, Err
     /// otherwise
     pub fn verify<T: Serialize + CryptoHash>(&self, message: &T) -> Result<()> {
@@ -198,6 +225,11 @@ impl TransactionAuthenticator {
                 // we will verify this case in pos state
                 Ok(())
             }
+            Self::Dilithium {public_key, signature} => {signature.verify(message, public_key)}
+            Self::MultiDilithium { .. } => {
+                // we will verify this case in pos state
+                Ok(())
+            }
         }
     }
 
@@ -210,6 +242,8 @@ impl TransactionAuthenticator {
             }
             Self::BLS { public_key, .. } => public_key.to_bytes().to_vec(),
             Self::MultiBLS { .. } => todo!(),
+            Self::Dilithium { public_key, .. } => public_key.to_bytes().to_vec(),
+            Self::MultiDilithium { .. } => todo!(),
         }
     }
 
@@ -222,6 +256,8 @@ impl TransactionAuthenticator {
             }
             Self::BLS { signature, .. } => signature.to_bytes().to_vec(),
             Self::MultiBLS { .. } => todo!(),
+            Self::Dilithium { signature, .. } => signature.to_bytes().to_vec(),
+            Self::MultiDilithium { .. } => todo!()
         }
     }
 

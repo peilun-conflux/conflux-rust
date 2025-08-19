@@ -19,6 +19,7 @@ extern crate rust_dilithium2 as rdil;
 /// A BLS signature wrapper
 pub mod bls;
 pub mod compat;
+/// A post quantum Dilithium2 algorithm wrapper
 pub mod dilithium;
 /// A Elliptic Curve VRF wrapper
 pub mod ec_vrf;
@@ -29,6 +30,8 @@ pub mod hkdf;
 /// A multi bls signature wrapper
 pub mod multi_bls;
 pub mod multi_ed25519;
+/// A multi dilithium signature wrapper
+pub mod multi_dilithium;
 pub mod noise;
 pub mod test_utils;
 pub mod traits;

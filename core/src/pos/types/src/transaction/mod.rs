@@ -653,7 +653,7 @@ impl SignedTransaction {
         signature: ConsensusSignature,
     ) -> SignedTransaction {
         let authenticator =
-            TransactionAuthenticator::bls(public_key, signature);
+            TransactionAuthenticator::dilithium(public_key, signature);
         SignedTransaction {
             raw_txn,
             authenticator,
@@ -664,7 +664,7 @@ impl SignedTransaction {
         raw_txn: RawTransaction, signatures: Vec<(ConsensusSignature, usize)>,
     ) -> SignedTransaction {
         let signature = MultiConsensusSignature::new(signatures).unwrap();
-        let authenticator = TransactionAuthenticator::multi_bls(signature);
+        let authenticator = TransactionAuthenticator::multi_dilithium(signature);
         SignedTransaction {
             raw_txn,
             authenticator,

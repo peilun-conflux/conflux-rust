@@ -392,6 +392,9 @@ pub(crate) mod private {
     impl Sealed for crate::dilithium::DilithiumPrivateKey {}
     impl Sealed for crate::dilithium::DilithiumSignature {}
 
+    impl Sealed for crate::multi_dilithium::MultiDilithiumPrivateKey {}
+    impl Sealed for crate::multi_dilithium::MultiDilithiumPublicKey {}
+    impl Sealed for crate::multi_dilithium::MultiDilithiumSignature {}
 }
 
 /// Hash the vrf output and a nonce within the proposer's voting power to

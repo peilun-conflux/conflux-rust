@@ -231,7 +231,7 @@ impl Mempool {
             for hash in &txn_hashes {
                 if let Some(txn) = self.transactions.get(hash) {
                     match txn.authenticator() {
-                        TransactionAuthenticator::BLS { signature, .. } => {
+                        TransactionAuthenticator::Dilithium { signature, .. } => {
                             if let Ok(index) =
                                 senders.binary_search(&txn.sender())
                             {

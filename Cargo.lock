@@ -827,7 +827,7 @@ dependencies = [
  "primitives",
  "rlp",
  "rlp_derive",
- "rust-dilithium2",
+ "rust-dilithium2 0.1.0 (git+https://github.com/shijingNWPU/rust-dilithium2.git?branch=perf-test)",
  "rustc-hex",
  "serde",
  "serde_derive",
@@ -1148,7 +1148,7 @@ dependencies = [
  "rayon",
  "rlp",
  "rlp_derive",
- "rust-dilithium2",
+ "rust-dilithium2 0.1.0 (git+https://github.com/shijingNWPU/rust-dilithium2.git?branch=perf-test)",
  "rustc-hex",
  "safety-rules",
  "schemadb",
@@ -2011,7 +2011,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.5.1",
  "ripemd160",
- "rust-dilithium2",
+ "rust-dilithium2 0.1.0",
  "serde",
  "serde-name",
  "serde_bytes",
@@ -5896,6 +5896,16 @@ version = "0.1.0"
 dependencies = [
  "futures 0.1.31",
  "tokio 0.1.22",
+]
+
+[[package]]
+name = "rust-dilithium2"
+version = "0.1.0"
+dependencies = [
+ "bindgen 0.65.1",
+ "cc",
+ "libc",
+ "libloading 0.8.3",
 ]
 
 [[package]]

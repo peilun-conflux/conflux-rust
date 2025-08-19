@@ -271,7 +271,7 @@ pub struct LedgerInfoWithV0Unchecked {
     /// The validator is identified by its account address: in order to verify
     /// a signature one needs to retrieve the public key of the validator
     /// for the given epoch.
-    pub signatures: BTreeMap<AccountAddress, BLSSignatureUnchecked>,
+    pub signatures: BTreeMap<AccountAddress, ConsensusSignature>,
 }
 
 impl From<LedgerInfoWithV0Unchecked> for LedgerInfoWithV0 {

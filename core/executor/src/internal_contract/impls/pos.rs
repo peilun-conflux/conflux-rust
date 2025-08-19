@@ -143,8 +143,8 @@ fn is_identifier_changeable(
 }
 
 pub fn register(
-    identifier: H256, sender: Address, vote_power: u64, bls_pubkey: Bytes,
-    vrf_pubkey: Bytes, bls_proof: [Bytes; 2], param: &ActionParams,
+    identifier: H256, sender: Address, vote_power: u64, dilithium_pubkey: Bytes,
+    vrf_pubkey: Bytes, _bls_proof: [Bytes; 2], param: &ActionParams,
     context: &mut InternalRefContext,
 ) -> vm::Result<()> {
     if vote_power == 0 {
@@ -155,14 +155,8 @@ pub fn register(
         internal_bail!("can not change identifier");
     }
 
-    let maybe_verified_bls_pubkey =
-        verify_bls_pubkey(bls_pubkey, bls_proof, !context.spec.cip_sigma_fix)?;
-    let verified_bls_pubkey = maybe_verified_bls_pubkey.ok_or(
-        vm::Error::InternalContract("Can not verify bls pubkey".into()),
-    )?;
-
     let mut hasher = Keccak::v256();
-    hasher.update(verified_bls_pubkey.as_slice());
+    hasher.update(dilithium_pubkey.as_slice());
     hasher.update(vrf_pubkey.as_slice());
     let mut computed_identifier = H256::default();
     hasher.finalize(computed_identifier.as_bytes_mut());
@@ -176,7 +170,7 @@ pub fn register(
 
     RegisterEvent::log(
         &identifier,
-        &(verified_bls_pubkey, vrf_pubkey),
+        &(dilithium_pubkey, vrf_pubkey),
         param,
         context,
     )?;

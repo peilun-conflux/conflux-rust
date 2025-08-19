@@ -234,7 +234,7 @@ pub fn setup_pos_environment(
                 .initial_nodes
                 .into_iter()
                 .map(|node| {
-                    (NodeID::new(node.bls_key, node.vrf_key), node.voting_power)
+                    (NodeID::new(node.dilithium_key, node.vrf_key), node.voting_power)
                 })
                 .collect(),
             pos_genesis_state.initial_committee,

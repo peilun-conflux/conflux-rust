@@ -9,7 +9,7 @@ use crate::{
     ValidCryptoMaterial, ValidCryptoMaterialStringExt, VerifyingKey,
 };
 use anyhow::{anyhow, Result};
-use rdil::sign::{SecretKey as RawPrivateKey, PublicKey as RawPublicKey, SignedMessage as RawSignature, Message as RawMessage, sign as rdil_sign, Message, verify_sign as rdil_verify_sign};
+use rdil::sign::{KeyPair as RawKeyPair, PublicKey as RawPublicKey, SignedMessage as RawSignature, Message as RawMessage, sign as rdil_sign, Message, verify_sign as rdil_verify_sign, get_key_pair};
 use diem_crypto_derive::{
     DeserializeKey, SerializeKey, SilentDebug, SilentDisplay,
 };
@@ -17,17 +17,20 @@ use diem_logger::prelude::*;
 use mirai_annotations::*;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::convert::TryFrom;
+use rdil::utils::config::{CRYPTO_BYTES, CRYPTO_PUBLICKEYBYTES, CRYPTO_SECRETKEYBYTES};
+use sha3::Sha3_256;
 
 #[cfg(mirai)]
 use crate::tags::ValidatedPublicKeyTag;
 use std::fmt::{self, Formatter};
+use digest::Digest;
 
 #[cfg(not(mirai))]
 struct ValidatedPublicKeyTag {}
 
 /// Dilithium signature private key
 #[derive(DeserializeKey, SerializeKey, SilentDebug, SilentDisplay)]
-pub struct DilithiumPrivateKey(RawPrivateKey);
+pub struct DilithiumPrivateKey(RawKeyPair);
 
 #[cfg(feature = "assert-private-keys-not-cloneable")]
 static_assertions::assert_not_impl_any!(DilithiumPrivateKey: Clone);
@@ -48,11 +51,6 @@ pub struct DilithiumPublicKey(RawPublicKey);
 #[derive(DeserializeKey, Clone, SerializeKey)]
 pub struct DilithiumSignature(RawSignature);
 
-impl DilithiumPrivateKey {
-    ///
-    pub fn raw_key(self) -> RawPrivateKey { self.0 }
-}
-
 impl PartialEq<Self> for DilithiumPrivateKey {
     fn eq(&self, other: &Self) -> bool { self.to_bytes() == other.to_bytes() }
 }
@@ -70,14 +68,15 @@ impl SigningKey for DilithiumPrivateKey {
         bcs::serialize_into(&mut bytes, &message)
             .map_err(|_| CryptoMaterialError::SerializationError)
             .expect("Serialization of signable material should not fail.");
-        DilithiumSignature(rdil_sign(&Message{data: bytes}, &self.0).expect("Signing failed"))
+        let data = Sha3_256::digest(&bytes).to_vec();
+        DilithiumSignature(rdil_sign(&Message{data}, &self.0.secret_key).expect("Signing failed"))
     }
 
     #[cfg(any(test, feature = "fuzzing"))]
     fn sign_arbitrary_message(
         &self, message: &[u8],
     ) -> Self::SignatureMaterial {
-        DilithiumSignature(rdil_sign(&Message{data: message.to_vec()}, &self.0).expect("Signing failed"))
+        DilithiumSignature(rdil_sign(&Message{data: message.to_vec()}, &self.0.secret_key).expect("Signing failed"))
     }
 }
 
@@ -121,7 +120,15 @@ impl Signature for DilithiumSignature {
         let mut bytes = <T::Hasher as CryptoHasher>::seed().to_vec();
         bcs::serialize_into(&mut bytes, &message)
             .map_err(|_| CryptoMaterialError::SerializationError)?;
-        self.verify_arbitrary_msg(&bytes, public_key)
+        let data = Sha3_256::digest(&bytes).to_vec();
+        match rdil_verify_sign(
+            &Message{data},
+            &self.0,
+            &public_key.0,
+        ) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(anyhow!("Invalid Dilithium signature: e={:?}", e)),
+        }
     }
 
     fn verify_arbitrary_msg(
@@ -145,18 +152,18 @@ impl PublicKey for DilithiumPublicKey {
 
 impl From<&DilithiumPrivateKey> for DilithiumPublicKey {
     fn from(private_key: &DilithiumPrivateKey) -> Self {
-        todo!()
+        DilithiumPublicKey(private_key.0.public_key.clone())
     }
 }
 
-impl From<&RawPrivateKey> for DilithiumPrivateKey {
-    fn from(raw_private_key: &RawPrivateKey) -> Self {
+impl From<&RawKeyPair> for DilithiumPrivateKey {
+    fn from(raw_private_key: &RawKeyPair) -> Self {
         DilithiumPrivateKey(raw_private_key.clone())
     }
 }
 
-impl From<RawPrivateKey> for DilithiumPrivateKey {
-    fn from(raw_private_key: RawPrivateKey) -> Self {
+impl From<RawKeyPair> for DilithiumPrivateKey {
+    fn from(raw_private_key: RawKeyPair) -> Self {
         DilithiumPrivateKey(raw_private_key)
     }
 }
@@ -179,7 +186,7 @@ impl TryFrom<&[u8]> for DilithiumPrivateKey {
     fn try_from(
         bytes: &[u8],
     ) -> std::result::Result<DilithiumPrivateKey, CryptoMaterialError> {
-        match RawPrivateKey::from_bytes(bytes) {
+        match RawKeyPair::from_bytes(bytes) {
             Ok(sig) => Ok(Self(sig)),
             Err(_) => Err(CryptoMaterialError::DeserializationError),
         }
@@ -260,18 +267,18 @@ impl ValidCryptoMaterial for DilithiumPrivateKey {
 
 impl Genesis for DilithiumPrivateKey {
     fn genesis() -> Self {
-        let mut buf = [0u8; CRYPTO_SECRETKEYBYTES];
-        buf[CRYPTO_SECRETKEYBYTES - 1] = 1;
+        let mut buf = [0u8; CRYPTO_SECRETKEYBYTES + CRYPTO_PUBLICKEYBYTES];
+        buf[CRYPTO_SECRETKEYBYTES + CRYPTO_PUBLICKEYBYTES - 1] = 1;
         Self::try_from(buf.as_ref()).unwrap()
     }
 }
 
 impl ValidCryptoMaterial for DilithiumPublicKey {
-    fn to_bytes(&self) -> Vec<u8> { self.0.as_bytes() }
+    fn to_bytes(&self) -> Vec<u8> { self.0.as_bytes().to_vec() }
 }
 
 impl ValidCryptoMaterial for DilithiumSignature {
-    fn to_bytes(&self) -> Vec<u8> { self.0.as_bytes() }
+    fn to_bytes(&self) -> Vec<u8> { self.0.as_bytes().to_vec() }
 }
 
 impl fmt::Display for DilithiumPublicKey {
@@ -283,7 +290,7 @@ impl fmt::Display for DilithiumPublicKey {
 impl Uniform for DilithiumPrivateKey {
     fn generate<R>(rng: &mut R) -> Self
     where R: ::rand::RngCore + ::rand::CryptoRng {
-        DilithiumPrivateKey(RawPrivateKey::generate(rng))
+        DilithiumPrivateKey(get_key_pair().unwrap())
     }
 }
 
@@ -305,77 +312,6 @@ impl fmt::Debug for DilithiumSignature {
     }
 }
 
-/// Used to deserialize keys in local storage whose validity has been checked
-/// before.
-#[derive(SerializeKey, DeserializeKey)]
-pub struct DilithiumPublicKeyUnchecked(RawPublicKey);
-/// Used to deserialize keys in local storage whose validity has been checked
-/// before.
-#[derive(SerializeKey, DeserializeKey)]
-pub struct DilithiumSignatureUnchecked(RawSignature);
-
-impl TryFrom<&[u8]> for DilithiumPublicKeyUnchecked {
-    type Error = CryptoMaterialError;
-
-    /// Deserialize an DilithiumPrivateKey. This method will also check for key
-    /// validity.
-    fn try_from(
-        bytes: &[u8],
-    ) -> std::result::Result<DilithiumPublicKeyUnchecked, CryptoMaterialError> {
-        match RawPublicKey::from_bytes_unchecked(bytes) {
-            Ok(sig) => Ok(Self(sig)),
-            Err(e) => {
-                diem_debug!(
-                    "DilithiumPublicKey debug error: bytes={:?}, err={:?}",
-                    bytes,
-                    e
-                );
-                Err(CryptoMaterialError::DeserializationError)
-            }
-        }
-    }
-}
-
-impl TryFrom<&[u8]> for DilithiumSignatureUnchecked {
-    type Error = CryptoMaterialError;
-
-    /// Deserialize an DilithiumPrivateKey. This method will also check for key
-    /// validity.
-    fn try_from(
-        bytes: &[u8],
-    ) -> std::result::Result<DilithiumSignatureUnchecked, CryptoMaterialError> {
-        // TODO(lpl): Check malleability?
-        match RawSignature::from_bytes_unchecked(bytes) {
-            Ok(sig) => Ok(Self(sig)),
-            Err(_) => Err(CryptoMaterialError::DeserializationError),
-        }
-    }
-}
-
-impl ValidCryptoMaterial for DilithiumPublicKeyUnchecked {
-    fn to_bytes(&self) -> Vec<u8> { self.0.as_bytes() }
-}
-
-impl ValidCryptoMaterial for DilithiumSignatureUnchecked {
-    fn to_bytes(&self) -> Vec<u8> { self.0.as_bytes() }
-}
-
-impl From<DilithiumPublicKeyUnchecked> for DilithiumPublicKey {
-    fn from(unchecked: DilithiumPublicKeyUnchecked) -> Self { Self(unchecked.0) }
-}
-
-impl From<DilithiumSignatureUnchecked> for DilithiumSignature {
-    fn from(unchecked: DilithiumSignatureUnchecked) -> Self { Self(unchecked.0) }
-}
-
-/// Deserialize public key from local storage.
-pub fn deserialize_dilithium_public_key_unchecked<'de, D>(
-    deserializer: D,
-) -> Result<DilithiumPublicKey, D::Error>
-where D: Deserializer<'de> {
-    DilithiumPublicKeyUnchecked::deserialize(deserializer).map(Into::into)
-}
-
 #[cfg(any(test, feature = "fuzzing"))]
 use crate::test_utils::{self, KeyPair};
 
@@ -388,7 +324,8 @@ pub fn keypair_strategy(
 
 #[cfg(any(test, feature = "fuzzing"))]
 use proptest::prelude::*;
-use rdil::utils::config::{CRYPTO_BYTES, CRYPTO_SECRETKEYBYTES};
+use rand::CryptoRng;
+use sha2::Sha256;
 
 #[cfg(any(test, feature = "fuzzing"))]
 impl proptest::arbitrary::Arbitrary for DilithiumPublicKey {
@@ -417,11 +354,11 @@ mod test {
     use std::{convert::TryFrom, time::Instant};
 
     #[derive(Debug, CryptoHasher, BCSCryptoHash, Serialize, Deserialize)]
-    pub struct TestDiemCrypto(pub String);
+    pub struct TestDilithiumCrypto(pub String);
     #[test]
     fn test_dilithium_sig_decode() {
         let sk = DilithiumPrivateKey::generate(&mut rand::thread_rng());
-        let sig = sk.sign(&TestDiemCrypto("".to_string()));
+        let sig = sk.sign(&TestDilithiumCrypto("".to_string()));
         let sig_bytes = sig.to_bytes();
         let start = Instant::now();
         let _decoded = DilithiumSignature::try_from(sig_bytes.as_slice()).unwrap();

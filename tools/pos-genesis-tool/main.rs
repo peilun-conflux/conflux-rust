@@ -207,7 +207,7 @@ fn elect_genesis_committee(
     let mut node_map = HashMap::new();
     let mut electing_heap = BinaryHeap::new();
     for node in initial_nodes {
-        let node_id = NodeID::new(node.bls_key.clone(), node.vrf_key.clone());
+        let node_id = NodeID::new(node.dilithium_key.clone(), node.vrf_key.clone());
         let buffer = [node_id.addr.as_ref(), initial_seed].concat();
         for nonce in 0..node.voting_power {
             electing_heap.push((
@@ -311,7 +311,7 @@ where
             public_key_file.write_all(public_key_str.as_bytes())?;
             genesis_nodes.push(GenesisPosNodeInfo {
                 address: pow_keypair.address(),
-                bls_key: public_key,
+                dilithium_key: public_key,
                 vrf_key: vrf_public_key,
                 voting_power,
                 register_tx,
@@ -360,7 +360,7 @@ where
             genesis_nodes.push(GenesisPosNodeInfo {
                 // Not used in PoS genesis.
                 address: Default::default(),
-                bls_key: public_key,
+                dilithium_key: public_key,
                 vrf_key: vrf_public_key,
                 voting_power,
                 // Not used in PoS genesis.

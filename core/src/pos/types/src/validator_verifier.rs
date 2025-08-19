@@ -64,7 +64,6 @@ pub struct ValidatorConsensusInfo {
     // We always vote for our local EpochState, and EpochState is included in
     // the voted hash. Thus, if a malicious pubkey is provided here, its
     // LedgerInfo won't get a QC.
-    #[serde(deserialize_with = "deserialize_bls_public_key_unchecked")]
     public_key: ConsensusPublicKey,
     /// None if we do not need VRF.
     vrf_public_key: Option<ConsensusVRFPublicKey>,

@@ -30,7 +30,7 @@ use cfx_types::{
     Space, H256, U256,
 };
 use diem_crypto::{
-    bls::BLSPrivateKey, ec_vrf::EcVrfPublicKey, PrivateKey, ValidCryptoMaterial,
+    dilithium::DilithiumPrivateKey, ec_vrf::EcVrfPublicKey, PrivateKey, ValidCryptoMaterial,
 };
 use diem_types::validator_config::{ConsensusPublicKey, ConsensusVRFPublicKey};
 use keylib::KeyPair;
@@ -424,7 +424,7 @@ pub fn genesis_block(
 }
 
 pub fn register_transaction(
-    bls_priv_key: BLSPrivateKey, vrf_pub_key: EcVrfPublicKey, power: u64,
+    dilithium_priv_key: DilithiumPrivateKey, vrf_pub_key: EcVrfPublicKey, power: u64,
     genesis_chain_id: u32, legacy: bool,
 ) -> NativeTransaction {
     /// TODO: test this function with new internal contracts.
@@ -433,30 +433,16 @@ pub fn register_transaction(
         Serialize,
     };
     use cfx_parameters::internal_contract_addresses::POS_REGISTER_CONTRACT_ADDRESS;
-    use rand_08::rngs::OsRng;
     use solidity_abi::ABIEncodable;
     use tiny_keccak::{Hasher, Keccak};
 
-    let bls_pub_key = bls_priv_key.public_key();
-    let (commit, answer) =
-        sigma_protocol::prove(bls_priv_key.raw_key(), &mut OsRng, legacy);
+    let dilithium_pub_key = dilithium_priv_key.public_key();
 
-    let mut encoded_commit = Vec::<u8>::new();
-    BlsPubKey::from(commit)
-        .write_bytes(&mut encoded_commit)
-        .expect("write to Vec<u8> never fails");
-
-    let mut encoded_answer = Vec::<u8>::new();
-    BlsPrivKey::from(answer)
-        .write_bytes(&mut encoded_answer)
-        .expect("write to Vec<u8> never fails");
-
-    let encoded_bls_pub_key = bls_pub_key.to_bytes();
-
+    let encoded_dilithium_pub_key = dilithium_pub_key.to_bytes();
     let encoded_vrf_pub_key = vrf_pub_key.to_bytes();
 
     let mut hasher = Keccak::v256();
-    hasher.update(encoded_bls_pub_key.as_slice());
+    hasher.update(encoded_dilithium_pub_key.as_slice());
     hasher.update(encoded_vrf_pub_key.as_slice());
     let mut computed_identifier = H256::default();
     hasher.finalize(computed_identifier.as_bytes_mut());
@@ -464,9 +450,9 @@ pub fn register_transaction(
     let params = (
         computed_identifier,
         power,
-        encoded_bls_pub_key,
-        encoded_vrf_pub_key,
-        [encoded_commit, encoded_answer],
+        encoded_dilithium_pub_key.clone(),
+        encoded_vrf_pub_key.clone(),
+        [Vec::<u8>::new(), Vec::<u8>::new()],
     );
 
     let mut call_data: Vec<u8> = "e335b451".from_hex().unwrap();
@@ -559,7 +545,7 @@ pub fn load_file(
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GenesisPosNodeInfo {
     pub address: Address,
-    pub bls_key: ConsensusPublicKey,
+    pub dilithium_key: ConsensusPublicKey,
     pub vrf_key: ConsensusVRFPublicKey,
     pub voting_power: u64,
     pub register_tx: NativeTransaction,

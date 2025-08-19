@@ -28,19 +28,10 @@ pub struct LedgerInfoWithSignatures {
     /// state available. Generally, this is used to verify BLS signatures
     /// at client side.
     next_epoch_validators: Option<BTreeMap<H256, Bytes>>,
-    /// Aggregated signature
-    aggregated_signature: Bytes,
 }
 
 impl From<&PrimitiveLedgerInfoWithSignatures> for LedgerInfoWithSignatures {
     fn from(value: &PrimitiveLedgerInfoWithSignatures) -> Self {
-        let signature_list: Vec<_> = value
-            .signatures()
-            .values()
-            .map(|v| v.clone().raw())
-            .collect();
-        let multi_sig = bls_signatures::aggregate(&signature_list)
-            .expect("only valid signatures");
         Self {
             ledger_info: value.ledger_info().into(),
             signatures: value
@@ -58,18 +49,13 @@ impl From<&PrimitiveLedgerInfoWithSignatures> for LedgerInfoWithSignatures {
                             (
                                 H256::from(k.to_u8()),
                                 v.public_key()
-                                    .clone()
-                                    .raw()
-                                    .as_affine()
-                                    .to_uncompressed()
-                                    .to_vec()
+                                    .to_bytes()
                                     .into(),
                             )
                         })
                         .collect()
                 },
             ),
-            aggregated_signature: multi_sig.as_bytes().into(),
         }
     }
 }

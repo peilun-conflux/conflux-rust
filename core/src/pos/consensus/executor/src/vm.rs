@@ -212,7 +212,7 @@ impl ExecutableBuiltinTx for PivotBlockDecision {
         if !spec.catch_up_mode {
             let authenticator = tx.authenticator();
             let signature = match authenticator {
-                TransactionAuthenticator::MultiBLS { signature } => {
+                TransactionAuthenticator::MultiDilithium{  signature } => {
                     Ok(signature)
                 }
                 _ => Err(VMStatus::Error(StatusCode::CFX_INVALID_TX)),
