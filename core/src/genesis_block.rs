@@ -354,7 +354,7 @@ pub fn genesis_block(
                 .add_balance(
                     &node.address.with_native_space(),
                     &(stake_balance
-                        + U256::from(ONE_CFX_IN_DRIP) * U256::from(20)),
+                        + U256::from(ONE_CFX_IN_DRIP) * U256::from(2000)),
                     CleanupMode::NoEmpty,
                 )
                 .unwrap();
@@ -464,9 +464,9 @@ pub fn register_transaction(
     tx.value = U256::zero();
     tx.action = Action::Call(POS_REGISTER_CONTRACT_ADDRESS);
     tx.chain_id = genesis_chain_id;
-    tx.gas = 200000.into();
+    tx.gas = 2000000.into();
     tx.gas_price = 1.into();
-    tx.storage_limit = 16000;
+    tx.storage_limit = 160000;
     tx
 }
 
