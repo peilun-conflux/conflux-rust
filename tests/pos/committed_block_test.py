@@ -20,6 +20,8 @@ class PosCommittedBlockTest(DefaultConfluxTestFramework):
         self.conf_parameters["vrf_proposal_threshold"] = '"{}"'.format(int_to_hex(int(2 ** 256 - 1)))
         self.conf_parameters["pos_pivot_decision_defer_epoch_count"] = '120'
         self.conf_parameters["pos_round_per_term"] = '10'
+        self.conf_parameters["log_level"] = '"trace"'
+
 
     def run_test(self):
         client = RpcClient(self.nodes[0])

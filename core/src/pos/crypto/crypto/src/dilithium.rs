@@ -17,7 +17,7 @@ use diem_logger::prelude::*;
 use mirai_annotations::*;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::convert::TryFrom;
-use rdil::utils::config::{CRYPTO_BYTES, CRYPTO_PUBLICKEYBYTES, CRYPTO_SECRETKEYBYTES};
+pub use rdil::utils::config::{CRYPTO_BYTES, CRYPTO_PUBLICKEYBYTES, CRYPTO_SECRETKEYBYTES};
 use sha3::Sha3_256;
 
 #[cfg(mirai)]

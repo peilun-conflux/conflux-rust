@@ -26,6 +26,7 @@ use std::{
     str,
     time::{Duration, Instant},
 };
+use diem_crypto::dilithium::CRYPTO_PUBLICKEYBYTES;
 
 /// Peer session over TCP connection, including outgoing and incoming sessions.
 ///
@@ -462,11 +463,11 @@ impl Session {
                 // FIXME(lpl): Verify keys.
                 let pos_public_key_bytes: Vec<u8> = rlp.val_at(3)?;
                 trace!("pos_public_key_bytes: {:?}", pos_public_key_bytes);
-                if pos_public_key_bytes.len() < BLS_PUBLIC_KEY_LENGTH {
+                if pos_public_key_bytes.len() < CRYPTO_PUBLICKEYBYTES {
                     bail!("pos public key bytes is too short!");
                 }
                 let bls_pub_key = ConsensusPublicKey::try_from(
-                    &pos_public_key_bytes[..BLS_PUBLIC_KEY_LENGTH],
+                    &pos_public_key_bytes[..CRYPTO_PUBLICKEYBYTES],
                 )
                 .map_err(|e| {
                     Error::from_kind(
@@ -474,7 +475,7 @@ impl Session {
                     )
                 })?;
                 let vrf_pub_key = ConsensusVRFPublicKey::try_from(
-                    &pos_public_key_bytes[BLS_PUBLIC_KEY_LENGTH..],
+                    &pos_public_key_bytes[CRYPTO_PUBLICKEYBYTES..],
                 )
                 .map_err(|e| {
                     Error::from_kind(
@@ -606,6 +607,7 @@ impl Session {
         key_bytes.append(
             &mut self.pos_public_key.as_ref().unwrap().1.to_bytes().to_vec(),
         );
+        debug!("Sending Key Bytes: {:?} {:?}", key_bytes.len(), self.pos_public_key);
         rlp.append(&key_bytes);
         self.send_packet(
             io,
