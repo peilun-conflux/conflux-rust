@@ -14,3 +14,5 @@ rand = "0.7"
 cfxkey = { path = "../accounts/cfxkey" }
 malloc_size_of_derive = {path = "../util/malloc_size_of_derive"}
 malloc_size_of= {path = "../util/malloc_size_of"}
+rust-dilithium2 = { git = "https://github.com/Conflux-Chain/rust-dilithium2.git", rev = "97967ccbf3803534bc0a0be1b03555faebcaa50e" }
+rustc-hex = "2.1.0"

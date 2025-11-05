@@ -23,7 +23,7 @@ use cfx_vm_types::{contract_address, CreateContractAddress};
 use cfxcore::{
     SharedConsensusGraph, SharedSynchronizationService, SharedTransactionPool,
 };
-use keylib::{public_to_address, Generator, KeyPair, Random, Secret};
+use keylib::{public_quantum_to_address, public_to_address, Generator, KeyPair, Random, Secret};
 use lazy_static::lazy_static;
 use metrics::{register_meter_with_group, Meter};
 use parking_lot::RwLock;
@@ -132,7 +132,7 @@ impl TransactionGenerator {
         let account_start_index = txgen.account_start_index.read().unwrap();
         let mut nonce_map: HashMap<Address, U256> = HashMap::new();
         let mut balance_map: HashMap<Address, U256> = HashMap::new();
-        let mut address_secret_pair: HashMap<Address, Secret> = HashMap::new();
+        let mut address_secret_pair: HashMap<Address, _> = HashMap::new();
         let mut addresses: Vec<Address> = Vec::new();
 
         debug!("Tx Generation Config {:?}", tx_config.generate_tx);
@@ -156,9 +156,8 @@ impl TransactionGenerator {
         debug!("Setup Usable Genesis Accounts");
         for i in 0..tx_config.account_count {
             let key_pair =
-                txgen.secret_store.get_keypair(account_start_index + i);
-            let address = key_pair.address();
-            let secret = key_pair.secret().clone();
+                txgen.secret_store.get_post_quantom_key(account_start_index + i);
+            let address = public_quantum_to_address(&key_pair.0.as_bytes().to_vec());
             addresses.push(address);
             nonce_map.insert(address.clone(), 0.into());
 
@@ -166,7 +165,7 @@ impl TransactionGenerator {
 
             balance_map
                 .insert(address.clone(), balance.unwrap_or(U256::zero()));
-            address_secret_pair.insert(address, secret);
+            address_secret_pair.insert(address, key_pair);
         }
 
         info!("Start Generating Workload");
@@ -227,7 +226,8 @@ impl TransactionGenerator {
             }
             .into();
 
-            let signed_tx = tx.sign(&address_secret_pair[&sender_address]);
+            let key_pair = &address_secret_pair[&sender_address];
+            let signed_tx = tx.sign_quantom(&key_pair.0, &key_pair.1);
             let mut tx_to_insert = Vec::new();
             tx_to_insert.push(signed_tx.transaction);
             let (txs, fail) =

@@ -827,7 +827,7 @@ dependencies = [
  "primitives",
  "rlp",
  "rlp_derive",
- "rust-dilithium2 0.1.0 (git+https://github.com/shijingNWPU/rust-dilithium2.git?branch=perf-test)",
+ "rust-dilithium2",
  "rustc-hex",
  "serde",
  "serde_derive",
@@ -1148,7 +1148,7 @@ dependencies = [
  "rayon",
  "rlp",
  "rlp_derive",
- "rust-dilithium2 0.1.0 (git+https://github.com/shijingNWPU/rust-dilithium2.git?branch=perf-test)",
+ "rust-dilithium2",
  "rustc-hex",
  "safety-rules",
  "schemadb",
@@ -2011,7 +2011,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.5.1",
  "ripemd160",
- "rust-dilithium2 0.1.0",
+ "rust-dilithium2",
  "serde",
  "serde-name",
  "serde_bytes",
@@ -5363,6 +5363,7 @@ dependencies = [
  "rand 0.7.3",
  "rlp",
  "rlp_derive",
+ "rust-dilithium2",
  "serde",
  "serde_derive",
  "serde_json",
@@ -5901,17 +5902,7 @@ dependencies = [
 [[package]]
 name = "rust-dilithium2"
 version = "0.1.0"
-dependencies = [
- "bindgen 0.65.1",
- "cc",
- "libc",
- "libloading 0.8.3",
-]
-
-[[package]]
-name = "rust-dilithium2"
-version = "0.1.0"
-source = "git+https://github.com/shijingNWPU/rust-dilithium2.git?branch=perf-test#b88d72a2072e5c1fffefda0020c5904aa3718cb3"
+source = "git+https://github.com/Conflux-Chain/rust-dilithium2.git?rev=97967ccbf3803534bc0a0be1b03555faebcaa50e#97967ccbf3803534bc0a0be1b03555faebcaa50e"
 dependencies = [
  "bindgen 0.65.1",
  "cc",
@@ -6156,6 +6147,8 @@ dependencies = [
  "parking_lot 0.11.2",
  "rand 0.7.3",
  "rlp",
+ "rust-dilithium2",
+ "rustc-hex",
 ]
 
 [[package]]

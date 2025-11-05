@@ -7,9 +7,7 @@ use cfx_types::{
     Address, AddressSpaceUtil, AddressWithSpace, BigEndianHash, Space, H160,
     H256, U256,
 };
-use keylib::{
-    self, public_to_address, public_quantum_to_address, recover, verify_public, Public, Secret, Signature
-};
+use keylib::{self, public_to_address, public_quantum_to_address, recover, verify_public, Public, Secret, Signature, get_quantum_public};
 use log::{error, info};
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use rlp::{self, Decodable, DecoderError, Encodable, Rlp, RlpStream};
@@ -535,6 +533,15 @@ impl Transaction {
         SignedTransaction::new(public, tx_with_sig)
     }
 
+    pub fn sign_quantom(self, secret: &rust_dilithium2::sign::SecretKey, public: &rust_dilithium2::sign::PublicKey) -> SignedTransaction {
+        let m = rust_dilithium2::sign::Message{data: self.signature_hash().as_bytes().to_vec()};
+        let sig = rust_dilithium2::sign::sign(&m, secret)
+            .expect("data is valid and context has signing capabilities; qed");
+        let tx_with_sig = self.with_quantom_signature(sig, public.clone());
+        let tx_public = get_quantum_public(&public.as_bytes().to_vec());
+        SignedTransaction::new(tx_public, tx_with_sig)
+    }
+
     /// Signs the transaction with signature.
     pub fn with_signature(self, sig: Signature) -> TransactionWithSignature {
         TransactionWithSignature {
@@ -550,6 +557,21 @@ impl Transaction {
             rlp_size: None,
         }
         .compute_hash()
+    }
+
+    pub fn with_quantom_signature(self, sig: rust_dilithium2::sign::SignedMessage, public_key: rust_dilithium2::sign::PublicKey) -> TransactionWithSignature {
+        TransactionWithSignature {
+            transaction: TransactionWithSignatureSerializePart {
+                unsigned: self,
+                sign_info: Sign::Quantum(Quantum {
+                    signed_msg: sig.data,
+                    public_key: public_key.data,
+                }),
+            },
+            hash: H256::zero(),
+            rlp_size: None,
+        }
+            .compute_hash()
     }
 }
 

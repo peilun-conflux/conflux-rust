@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 hex = "0.4.3"
-rust-dilithium2 = { git = "https://github.com/shijingNWPU/rust-dilithium2.git", branch = "perf-test" }
+rust-dilithium2 = { git = "https://github.com/Conflux-Chain/rust-dilithium2.git", rev = "97967ccbf3803534bc0a0be1b03555faebcaa50e" }
 # rust-dilithium2 = { path = "../../../cfx-account/cfx_account/quantum_sign/rust-dilithium2/" }
 bit-set = "0.4"
 substrate-bn = { git = "https://github.com/paritytech/bn", default-features = false, rev="63f8c587356a67b33c7396af98e065b66fca5dda" }

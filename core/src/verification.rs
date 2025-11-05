@@ -805,7 +805,6 @@ pub fn verify_quantum_signature(tx: TransactionWithSignature) -> bool {
         },
         &rdil::sign::SignedMessage{
             data: quantum.signed_msg.clone(), 
-            smlen: quantum.signed_msg.len(),
         },
         
         &rdil::sign::PublicKey{

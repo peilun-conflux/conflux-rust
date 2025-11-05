@@ -803,7 +803,6 @@ impl Impl for PostquantumImpl {
 
         let sm = SignedMessage{
             data: input[message_end..secret_message_end].to_vec(),
-            smlen: secret_message_len,
         };
 
         let pk = PublicKey{

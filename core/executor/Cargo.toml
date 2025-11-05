@@ -48,7 +48,7 @@ pow-types = {path = "../src/pos/types/pow-types"}
 impl-trait-for-tuples = "^0.2"
 impl-tools = "^0.10"
 typemap = "0.3"
-rust-dilithium2 = { git = "https://github.com/shijingNWPU/rust-dilithium2.git", branch = "perf-test" }
+rust-dilithium2 = { git = "https://github.com/Conflux-Chain/rust-dilithium2.git", rev = "97967ccbf3803534bc0a0be1b03555faebcaa50e" }
 
 
 [dev-dependencies]

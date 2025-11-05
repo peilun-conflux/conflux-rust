@@ -43,7 +43,7 @@ parking_lot = "0.11"
 openssl = "0.10"
 diem-logger = {path = "../../common/logger"}
 pkcs8 = {version = "0.7.5", features = ["encryption", "std"]}
-rust-dilithium2 = { path = "../../../../../../rust-dilithium2" }
+rust-dilithium2 = { git = "https://github.com/Conflux-Chain/rust-dilithium2.git", rev = "97967ccbf3803534bc0a0be1b03555faebcaa50e" }
 sha3 = "0.9.1"
 
 
