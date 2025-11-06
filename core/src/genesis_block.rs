@@ -102,8 +102,8 @@ pub fn load_secrets_file(
 
             let address = public_quantum_to_address(&bytes.unwrap());
             let key_bytes: Vec<u8> = line_string["quantum:".len()..].from_hex().unwrap();
-            let public_key = rdil::sign::PublicKey::from_bytes(&key_bytes[..328]).unwrap();
-            let secret_key = rdil::sign::SecretKey::from_bytes(&key_bytes[328..]).unwrap();
+            let public_key = rdil::sign::PublicKey::from_bytes(&key_bytes[..1312]).unwrap();
+            let secret_key = rdil::sign::SecretKey::from_bytes(&key_bytes[1312..]).unwrap();
             // info!("address:{:?}", address);
             accounts.insert(address.with_native_space(), balance.clone());
             secret_store.insert_post_quantum(secret_key, public_key);
