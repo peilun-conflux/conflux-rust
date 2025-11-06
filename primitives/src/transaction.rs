@@ -534,7 +534,21 @@ impl Transaction {
     }
 
     pub fn sign_quantom(self, secret: &rust_dilithium2::sign::SecretKey, public: &rust_dilithium2::sign::PublicKey) -> SignedTransaction {
-        let m = rust_dilithium2::sign::Message{data: self.signature_hash().as_bytes().to_vec()};
+        let rlp_transaction = match &self {
+            Transaction::Native(tx) => {
+                let mut rlp_stream = RlpStream::new();
+                rlp_stream.append(tx);
+                rlp_stream.drain()
+            }
+            Transaction::Ethereum(tx) => {
+                let mut rlp_stream = RlpStream::new();
+                rlp_stream.append(tx);
+                rlp_stream.drain()
+            }
+        };
+
+
+        let m = rust_dilithium2::sign::Message{data: rlp_transaction};
         let sig = rust_dilithium2::sign::sign(&m, secret)
             .expect("data is valid and context has signing capabilities; qed");
         let tx_with_sig = self.with_quantom_signature(sig, public.clone());
