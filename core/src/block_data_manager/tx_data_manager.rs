@@ -235,17 +235,38 @@ impl TransactionDataManager {
                 self.worker_pool.lock().execute(move || {
                     let mut signed_txns = Vec::new();
                     for (idx, tx) in unsigned_txns {
-                        if let Ok(public) = tx.recover_public() {
-                            signed_txns.push((idx, Arc::new(SignedTransaction::new(
-                                public,
-                                tx.clone(),
-                            ))));
-                        } else {
-                            info!(
-                                "Unable to recover the public key of transaction {:?}",
-                                tx.hash()
-                            );
-                            break;
+                        match tx.transaction.sign_info {
+                            Sign::Curve(..) => {
+                                if let Ok(public) = tx.recover_public() {
+                                    signed_txns.push((idx, Arc::new(SignedTransaction::new(
+                                        public,
+                                        tx.clone(),
+                                    ))));
+                                } else {
+                                    info!(
+                                        "Unable to recover the public key of transaction {:?}",
+                                        tx.hash()
+                                    );
+                                    break;
+                                }
+                            }
+                            Sign::Quantum(ref sign_info) => {
+                                let is_quantum_signature = verify_quantum_signature(tx.clone());
+                                if !is_quantum_signature {
+                                    info!(
+                                        "Signature cannot pass verification",
+                                    );
+                                    break;
+                                } else {
+                                    let st = SignedTransaction::new(
+                                        get_quantum_public(&sign_info.public_key.clone()),
+                                        tx.clone());
+                                    signed_txns.push((
+                                        idx,
+                                        Arc::new(st),
+                                    ));
+                                }
+                            }
                         }
                     }
                     sender.send(signed_txns).unwrap();
