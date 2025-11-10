@@ -145,7 +145,7 @@ impl TransactionDataManager {
         for (idx, tx) in self.recover_uncached_tx(uncached_trans)? {
             recovered_trans[idx] = Some(tx);
         }
-        info!("recovered_trans:{:?}", recovered_trans);
+        // info!("recovered_trans:{:?}", recovered_trans);
         Ok(recovered_trans
             .into_iter()
             .map(|e| e.expect("All tx recovered"))

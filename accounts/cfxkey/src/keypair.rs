@@ -43,12 +43,12 @@ pub fn public_quantum_to_address(public: &Vec<u8>) -> Address {
     public_vec[..len].copy_from_slice(&public[..len]);
     
     let hex_string = public_vec.iter().map(|byte| format!("{:02x}", byte)).collect::<String>();
-    info!("hex_string:{:?}", hex_string);
+    // info!("hex_string:{:?}", hex_string);
     
-    info!("public_vec:{:?}", public_vec);
+    // info!("public_vec:{:?}", public_vec);
     let mut public_h512 = H512::zero();
     public_h512.as_bytes_mut()[..public_vec.len()].copy_from_slice(&public_vec);
-    info!("public_h512:{:?}", public_h512);
+    // info!("public_h512:{:?}", public_h512);
 
     return public_to_address(&public_h512, true);
     
