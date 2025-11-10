@@ -14,6 +14,7 @@ extern crate rand;
 extern crate rustc_hex;
 extern crate secret_store;
 use log::{debug, info, trace, warn};
+use rayon::prelude::*;
 
 use crate::bytes::Bytes;
 use cfx_types::{
@@ -216,6 +217,7 @@ impl TransactionGenerator {
             // Generate the transaction, sign it, and push into the transaction
             // pool
             let mut tx_to_insert = Vec::new();
+            let mut unsigned = Vec::new();
             for i in 0..tx_config.batch_size {
                 let tx: Transaction = NativeTransaction {
                     nonce: sender_nonce + i,
@@ -229,10 +231,12 @@ impl TransactionGenerator {
                     data: Bytes::new(),
                 }
                 .into();
-                let key_pair = &address_secret_pair[&sender_address];
-            let signed_tx = tx.sign_quantom(&key_pair.0, &key_pair.1);
-                tx_to_insert.push(signed_tx.transaction);
+                unsigned.push(tx);
             }
+            tx_to_insert = unsigned.into_par_iter().map(|tx| {
+                let key_pair = &address_secret_pair[&sender_address];
+                tx.sign_quantom(&key_pair.0, &key_pair.1).transaction
+            }).collect();
             let (success_txs, fail) =
                 txgen.txpool.insert_new_transactions(tx_to_insert);
 

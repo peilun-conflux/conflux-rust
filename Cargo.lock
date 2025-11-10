@@ -7348,6 +7348,7 @@ dependencies = [
  "primitives",
  "priority-send-queue",
  "rand 0.7.3",
+ "rayon",
  "rlp",
  "rustc-hex",
  "secret-store",

@@ -562,3 +562,4 @@ cip43_init_end_number = 92751800
 pos_reference_enable_height = 37400000
 generate_tx = true
 genesis_secrets = "genesis_secrets.txt"
+generate_tx_period_us = 50_000
