@@ -48,6 +48,7 @@ pub struct Transaction {
     pub r: U256,
     /// The S field of the signature.
     pub s: U256,
+    pub sign_info: Sign,
 }
 
 pub enum PackedOrExecuted {
@@ -77,6 +78,11 @@ impl Transaction {
             v: Default::default(),
             r: Default::default(),
             s: Default::default(),
+            sign_info: Sign::Curve(Curve{
+                v: Default::default(),
+                r: Default::default(),
+                s: Default::default(),
+            }),
         })
     }
 
@@ -151,6 +157,7 @@ impl Transaction {
             v: v,
             r: r,
             s: s,
+            sign_info: t.sign_info.clone(),
         })
     }
 

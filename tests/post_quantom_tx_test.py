@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+# coding: utf-8
+import datetime
+import time
+import os
+import types
+import shutil
+import sys
+
+from conflux.rpc import RpcClient
+# from eth_utils import decode_hex
+from test_framework import coverage
+
+from conflux.messages import GetBlockHeaders, GET_BLOCK_HEADERS_RESPONSE
+from test_framework.mininode import start_p2p_connection
+from test_framework.test_framework import ConfluxTestFramework
+from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until, WaitHandler, \
+    initialize_datadir, PortMin, get_datadir_path, connect_sample_nodes, sync_blocks
+from test_framework.blocktools import wait_for_initial_nonce_for_address
+import random
+sys.path.insert(1, "../../cfx-account")
+from cfx_account.account import (
+    Account
+)
+import threading
+from cfx_address.utils import public_key_to_cfx_hex
+import pprint
+from conflux_web3 import Web3
+from solcx import install_solc, compile_source
+
+
+ACCOUNT_NUM = 20
+TX_NUM_FOR_ACCOUNT = 50
+
+class SignTest(ConfluxTestFramework): 
+    def __init__(self):
+        super().__init__()
+        self.nonce_map = {}        
+
+    def set_test_params(self):
+        self.num_nodes = 2
+        self.conf_parameters = {
+            "executive_trace": "true",
+            "public_rpc_apis": "\"cfx,debug,test,pubsub,trace\"",
+            "mining_type": "'disable'",
+        }
+        self.conf_parameters["log_level"] = '"trace"'
+
+    def start_node(self, i, extra_args=None, phase_to_wait=["NormalSyncPhase"], wait_time=30, *args, **kwargs):        
+        print("start_nodes from this.")
+        # only node 1 starts mining
+            
+        node = self.nodes[i]
+
+        node.start(extra_args, *args, **kwargs)
+        node.wait_for_rpc_connection()
+        node.wait_for_nodeid()
+        # try:
+        #     node.pos_start()
+        # except Exception as e:
+        #     print(e)
+        if phase_to_wait is not None:
+            node.wait_for_recovery(phase_to_wait, wait_time)
+
+        if self.options.coveragedir is not None:
+            coverage.write_all_rpc_commands(self.options.coveragedir, node.rpc)
+
+    def setup_network(self):
+        self.setup_nodes()
+
+    def run_test(self):
+        time.sleep(7)
+
+        blocks = self.nodes[0].generate_empty_blocks(1)
+        self.best_block_hash = blocks[-1] #make_genesis().block_header.hash
+
+        self._test_quantum_sign()
+        time.sleep(100000)
+
+
+    def set_genesis_secrets(self):
+        genesis_file_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "conflux_sj/sign_secrets.txt")
+        self.conf_parameters["genesis_secrets"] = f"\"{genesis_file_path}\""
+
+    def start_network(self, node_count):
+        self.nodes = []
+        self.add_nodes(node_count)
+        for node_index in range(node_count):
+            self.set_genesis_secrets()
+            initialize_datadir(self.options.tmpdir, node_index, PortMin.n, self.conf_parameters)
+            self.start_node(node_index, phase_to_wait=None)
+
+        connect_sample_nodes(self.nodes, self.log, sample=self.num_nodes - 1)
+        
+
+        sync_blocks(self.nodes)
+        for node in self.nodes:
+            node.wait_for_recovery(["NormalSyncPhase"], 30)
+
+    def _test_quantum_sign(self):
+        self.stop_nodes()
+
+        # delete nodes' file
+        for i in range(len(self.nodes)):
+            datadir = get_datadir_path(self.options.tmpdir, i)
+            shutil.rmtree(datadir)
+        old_pos_files = ["initial_nodes.json", "genesis_file", "waypoint_config", "public_key"]
+        for f in old_pos_files:
+            os.remove(os.path.join(self.options.tmpdir, f))
+        shutil.rmtree(os.path.join(self.options.tmpdir, "private_keys"))
+
+
+
+        # generate accounts
+        key_list = self.generate_quantum_accounts(ACCOUNT_NUM)
+
+        # copy to sign_secrets.txt
+        ps_keys_list = {}
+        current_path = os.path.abspath(os.path.dirname(__file__))
+
+        with open(current_path + '/conflux_sj/sign_secrets.txt', 'w') as file:
+            for key in key_list:            
+                file.write("quantum:" + key[0] + key[1])
+                file.write('\n') 
+                ps_keys_list[key[0]] = key[1]
+        
+
+        # start three new nodes and only one execute test method
+        self.start_network(3)
+
+
+        current_path = os.path.abspath(os.path.dirname(__file__))     
+        with open(current_path + "/conflux_sj/sign_secrets.txt", 'r') as file:
+            lines = file.readlines()
+        
+        account_num = len(lines)
+        address_list = {} 
+        for i in range(0, account_num):
+            line = lines[i].strip()
+            if "quantum" not in line:
+                continue
+            # line = "0x" + line
+            line = line.replace("quantum:", "")
+            account = public_key_to_cfx_hex("0x" + line[0:40])
+            address_list[account] = line[0:2624]
+         
+        # print("address_list:", address_list)
+        # print("ps_keys_list:", ps_keys_list)
+    
+        for address, pub_key in address_list.items():
+            pub_key = pub_key.replace("0x", "")
+            if pub_key in ps_keys_list.keys():
+                secrete_key = ps_keys_list[pub_key]
+            else:
+                secrete_key = ""
+
+            self.log.info(f"Account public key: 0x{pub_key}")
+            signed_tx = Account.sign_transaction_post_quantum(self.get_transaction(), pub_key, secrete_key)
+            client = RpcClient(self.nodes[0])
+            tx_hash = client.send_raw_tx(signed_tx.rawTransaction.hex())
+            client.wait_for_receipt(tx_hash)
+            self.log.info(f"Transaction sent and committed, hash={tx_hash}")
+            break
+
+    def generate_quantum_accounts(self, account_num):
+        account_list = []
+        for i in range(0, account_num):
+            account_list.append(Account.get_key_pair_post_quantum())
+        return account_list
+
+
+    def get_transaction(self):
+        transaction = {
+            # 'from': '0x1b981f81568edd843dcb5b407ff0dd2e25618622'.lower(),
+            'to': 'cfxtest:aak7fsws4u4yf38fk870218p1h3gxut3ku00u1k1da',
+            'nonce': 0,
+            'value': 1,
+            'gas': 100000,
+            'gasPrice': 1,
+            'storageLimit': 100,
+            'epochHeight': 100,
+            'chainId': 10
+        }
+        return transaction
+ 
+
+if __name__ == "__main__":
+    SignTest().main()
