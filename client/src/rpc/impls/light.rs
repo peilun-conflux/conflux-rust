@@ -1189,6 +1189,7 @@ impl TestRpc for TestRpcImpl {
             fn pos_trigger_timeout(&self, timeout_type: String) -> JsonRpcResult<()>;
             fn pos_force_sign_pivot_decision(&self, block_hash: H256, height: U64) -> JsonRpcResult<()>;
             fn pos_get_chosen_proposal(&self) -> JsonRpcResult<Option<PosBlock>>;
+            fn verify_dilithium_signature(&self, message: Bytes, sig: Bytes, pubkey: Bytes) -> JsonRpcResult<bool>;
         }
     }
 

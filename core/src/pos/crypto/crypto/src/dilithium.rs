@@ -69,7 +69,9 @@ impl SigningKey for DilithiumPrivateKey {
             .map_err(|_| CryptoMaterialError::SerializationError)
             .expect("Serialization of signable material should not fail.");
         let data = Sha3_256::digest(&bytes).to_vec();
-        DilithiumSignature(rdil_sign(&Message{data}, &self.0.secret_key).expect("Signing failed"))
+        let sig = rdil_sign(&Message{data: data.clone()}, &self.0.secret_key).expect("Signing failed");
+        debug!("dilithium sign: data={:?} hash={:?} signature={:?}", bytes, data, sig.data);
+        DilithiumSignature(sig)
     }
 
     #[cfg(any(test, feature = "fuzzing"))]
@@ -326,6 +328,7 @@ pub fn keypair_strategy(
 use proptest::prelude::*;
 use rand::CryptoRng;
 use sha2::Sha256;
+use diem_logger::debug;
 
 #[cfg(any(test, feature = "fuzzing"))]
 impl proptest::arbitrary::Arbitrary for DilithiumPublicKey {

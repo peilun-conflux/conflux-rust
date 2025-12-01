@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-
+use std::convert::TryFrom;
 use crate::rpc::{
     impls::pos::hash_value_to_h256,
     types::{
@@ -46,7 +46,9 @@ use cfxcore::{
 };
 use cfxcore_accounts::AccountProvider;
 use cfxkey::Password;
+use diem_crypto::dilithium::{DilithiumPublicKey, DilithiumSignature};
 use diem_crypto::hash::HashValue;
+use diem_crypto::Signature;
 use diem_types::{
     account_address::{from_consensus_public_key, AccountAddress},
     block_info::PivotBlockDecision,
@@ -527,6 +529,12 @@ impl RpcImpl {
             num.into(),
             "num",
         )
+    }
+
+    pub fn verify_dilithium_signature(&self, message: Bytes, sig: Bytes, pubkey: Bytes) -> RpcResult<bool> {
+        let sig = DilithiumSignature::try_from(sig.0.as_slice()).map_err(|_| RpcError::invalid_params("invalid signature"))?;
+        let pk = DilithiumPublicKey::try_from(pubkey.0.as_slice()).map_err(|_| RpcError::invalid_params("invalid public key"))?;
+        Ok(sig.verify_arbitrary_msg(message.0.as_slice(), &pk).is_ok())
     }
 }
 

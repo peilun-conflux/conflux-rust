@@ -158,4 +158,7 @@ pub trait TestRpc {
 
     #[rpc(name = "pos_get_chosen_proposal")]
     fn pos_get_chosen_proposal(&self) -> RpcResult<Option<PosBlock>>;
+
+    #[rpc(name = "verify_dilithium_signature")]
+    fn verify_dilithium_signature(&self, message: Bytes, sig: Bytes, pubkey: Bytes) -> RpcResult<bool>;
 }
