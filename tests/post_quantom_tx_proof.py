@@ -11,28 +11,42 @@ from test_framework.blocktools import encode_hex_0x
 from conflux_web3 import Web3
 
 def main():
+    # 从命令行参数获取交易哈希和公钥
     tx_hash = sys.argv[1]
     pub_key = sys.argv[2]
+
+    # 获取RPC客户端
     client = get_simple_rpc_proxy("http://localhost:15025")
+
+    # 通过交易哈希获取交易信息
     tx = client.cfx_getTransactionByHash(tx_hash)
-    print(f"Read transaction from the blockchain node: tx={tx}")
+    print(f"读取区块链节点中的交易: tx={tx}")
+
+    # 提取签名信息并验证公钥
     sign_info = tx["signInfo"]["Quantum"]
     assert_equal(encode_hex_0x(bytes(sign_info["public_key"])), pub_key)
+
+    # 获取签名
     signature = encode_hex_0x(bytes(sign_info["signed_msg"]))
-    print(f"Signature found: signature={signature}")
+    print(f"找到签名: signature={signature}")
+
+    # 移除不需要的字段
     remove_list = ['blockHash', 'contractCreated', 'from', 'hash', 'signInfo', 'status', 'transactionIndex', 'r', 's', 'v']
     for item in remove_list:
         del tx[item]
     int_list = ["nonce", "gasPrice", "value", "storageLimit", "gas", "epochHeight", "chainId"]
     for item in int_list:
         tx[item] = int(tx[item], 16)
-    # tx["to"] = Web3.to_checksum_address(b32_address_to_hex(tx["to"]))
     tx["data"] = decode_hex(tx["data"])
+
+    # 创建可序列化的未签名交易
     unsigned_tx = serializable_unsigned_transaction_from_dict(tx)
     sign_msg = rlp.encode(unsigned_tx)
-    print(f"Encode the transaction for verification, sign_msg={sign_msg}")
+    print(f"编码交易以进行验证, sign_msg={sign_msg}")
+
+    # 验证Dilithium签名
     verify_dilithium_signature(client, encode_hex_0x(sign_msg), signature, pub_key)
-    print("Tests successful")
+    print("测试成功")
 
 
 if __name__ == '__main__':

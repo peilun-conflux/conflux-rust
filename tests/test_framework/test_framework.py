@@ -178,6 +178,12 @@ class ConfluxTestFramework:
             dest="port_min",
             default=15000,
             type=int)
+        parser.add_argument(
+            "--test-name",
+            dest="test_name",
+            default=None,
+            type=str,
+        )
         self.add_options(parser)
         self.options = parser.parse_args()
 

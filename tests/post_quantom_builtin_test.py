@@ -29,8 +29,10 @@ class SignTest(DefaultConfluxTestFramework):
 
     def run_test(self):
         self.client = RpcClient(self.nodes[0])
-        self.test_valid_signature()
-        self.test_invalid_signature()
+        if self.options.test_name == "valid":
+            self.test_valid_signature()
+        elif self.options.test_name == "invalid":
+            self.test_invalid_signature()
 
     def encode_input_data(self, message, signed_message, public_key):
         """
@@ -59,27 +61,41 @@ class SignTest(DefaultConfluxTestFramework):
         return message, bytes(sm), decode_hex(pk)
 
     def test_valid_signature(self):
-        """Test with a valid signature (should return 0)"""
+        """
+        测试有效的签名（应返回0）
+        """
+        # 打印测试标题
         print("\n=== Testing Valid Signature ===")
 
+        # 生成用于测试的Dilithium数据
         message, signed_message, public_key = self.generate_test_dilithium_data()
+        # 编码输入数据
         input_data = self.encode_input_data(message, signed_message, public_key)
+        # 发送交易并获取结果
         result = self.send_transaction(input_data)
-        print(f"Transaction execution result: f{result}")
+        print(f"Transaction execution result: {result}")
+        # 断言结果应为0
         assert_equal(result, "0x00")
         print("Valid signature test passed")
 
+
     def test_invalid_signature(self):
-        """Test with an invalid signature (should return 1)"""
+        """
+        测试无效的签名（应返回1）
+        """
+        # 打印测试标题
         print("\n=== Testing Invalid Signature ===")
 
+        # 生成用于测试的Dilithium数据
         message, signed_message, public_key = self.generate_test_dilithium_data()
-        # Corrupt the signature to make it invalid
+        # 修改签名使其无效
         signed_message = signed_message[:-10] + b"corrupted!"
-
+        # 编码输入数据
         input_data = self.encode_input_data(message, signed_message, public_key)
+        # 发送交易并获取结果
         result = self.send_transaction(input_data)
-        print(f"Transaction execution result: f{result}")
+        print(f"Transaction execution result: {result}")
+        # 断言结果应为1
         assert_equal(result, "0x01")
         print("Invalid signature test passed")
 

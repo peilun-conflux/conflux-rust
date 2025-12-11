@@ -23,6 +23,7 @@ class PosCommittedBlockTest(DefaultConfluxTestFramework):
 
 
     def run_test(self):
+        # 启动节点，等待PoS区块生成
         self.log.info("wait for initialization")
         client = RpcClient(self.nodes[0])
         # wait for the first epoch to end
@@ -32,6 +33,7 @@ class PosCommittedBlockTest(DefaultConfluxTestFramework):
         wait_until(lambda: int(client.pos_status()["epoch"], 0) == 2)
         wait_until(lambda: int(client.pos_status()["epoch"], 0) == 3)
         self.log.info("PoS epoch 3 committed, please run the verification script...")
+        # 保持节点运行，等待验证脚本查询
         time.sleep(100000)
 
 
