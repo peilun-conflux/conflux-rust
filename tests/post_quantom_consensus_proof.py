@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import random
 
@@ -61,6 +62,7 @@ def main():
             count += 1
             if count >= MAX_COUNT:
                 break
+    print("Tests successful")
 
 
 if __name__ == '__main__':

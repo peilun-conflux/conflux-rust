@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import sys
 
 import rlp
@@ -31,6 +32,7 @@ def main():
     sign_msg = rlp.encode(unsigned_tx)
     print(f"Encode the transaction for verification, sign_msg={sign_msg}")
     verify_dilithium_signature(client, encode_hex_0x(sign_msg), signature, pub_key)
+    print("Tests successful")
 
 
 if __name__ == '__main__':
