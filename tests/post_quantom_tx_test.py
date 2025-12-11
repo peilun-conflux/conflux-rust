@@ -7,6 +7,8 @@ import types
 import shutil
 import sys
 
+from hexbytes import HexBytes
+
 from conflux.rpc import RpcClient
 # from eth_utils import decode_hex
 from test_framework import coverage
@@ -15,7 +17,7 @@ from conflux.messages import GetBlockHeaders, GET_BLOCK_HEADERS_RESPONSE
 from test_framework.mininode import start_p2p_connection
 from test_framework.test_framework import ConfluxTestFramework
 from test_framework.util import assert_equal, connect_nodes, get_peer_addr, wait_until, WaitHandler, \
-    initialize_datadir, PortMin, get_datadir_path, connect_sample_nodes, sync_blocks
+    initialize_datadir, PortMin, get_datadir_path, connect_sample_nodes, sync_blocks, assert_raises_rpc_error
 from test_framework.blocktools import wait_for_initial_nonce_for_address
 import random
 sys.path.insert(1, "../../cfx-account")
@@ -47,7 +49,6 @@ class SignTest(ConfluxTestFramework):
         self.conf_parameters["log_level"] = '"trace"'
 
     def start_node(self, i, extra_args=None, phase_to_wait=["NormalSyncPhase"], wait_time=30, *args, **kwargs):        
-        print("start_nodes from this.")
         # only node 1 starts mining
             
         node = self.nodes[i]
@@ -75,6 +76,7 @@ class SignTest(ConfluxTestFramework):
         self.best_block_hash = blocks[-1] #make_genesis().block_header.hash
 
         self._test_quantum_sign()
+        self.log.info("Please run the verification script...")
         time.sleep(100000)
 
 
@@ -156,10 +158,17 @@ class SignTest(ConfluxTestFramework):
 
             self.log.info(f"Account public key: 0x{pub_key}")
             signed_tx = Account.sign_transaction_post_quantum(self.get_transaction(), pub_key, secrete_key)
+            self.log.info(f"Transaction signed: {signed_tx}")
             client = RpcClient(self.nodes[0])
             tx_hash = client.send_raw_tx(signed_tx.rawTransaction.hex())
             client.wait_for_receipt(tx_hash)
             self.log.info(f"Transaction sent and committed, hash={tx_hash}")
+
+            self.log.info("Modify the tx signature and submit again")
+            invalid_raw_tx = bytearray(signed_tx.rawTransaction)
+            invalid_raw_tx[10:20] = b"corrupted!"
+            assert_raises_rpc_error(None, None, client.send_raw_tx, HexBytes(invalid_raw_tx).hex())
+            self.log.info("Modified tx cannot pass verification")
             break
 
     def generate_quantum_accounts(self, account_num):

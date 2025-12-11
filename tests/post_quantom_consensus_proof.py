@@ -45,10 +45,10 @@ def main():
         if "dilithium sign" in line:
             h = encode_hex(find_between(line, "hash=", "]"))
             sig = encode_hex(find_between(line, "signature=", "]"))
-            # print(h, sig, pubkey)
-            print("Verify PoS signature")
+            print("PoS signature found. Verifying...")
             verify_dilithium_signature(client, h, sig, pubkey)
             new_sig_list = list(sig[2:])
+            print("Modified the PoS signature by one byte. It should fail the verification.")
             while True:
                 i = random.randint(0, len(new_sig_list) - 1)
                 if new_sig_list[i] != 0:
@@ -56,7 +56,6 @@ def main():
                     new_sig_list[i] = "0"
                     break
             new_sig = "0x" + "".join(new_sig_list)
-            print("Verify modified PoS signature")
             verify_dilithium_signature(client, h, new_sig, pubkey)
 
             count += 1

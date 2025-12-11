@@ -65,6 +65,7 @@ class SignTest(DefaultConfluxTestFramework):
         message, signed_message, public_key = self.generate_test_dilithium_data()
         input_data = self.encode_input_data(message, signed_message, public_key)
         result = self.send_transaction(input_data)
+        print(f"Transaction execution result: f{result}")
         assert_equal(result, "0x00")
         print("Valid signature test passed")
 
@@ -78,6 +79,7 @@ class SignTest(DefaultConfluxTestFramework):
 
         input_data = self.encode_input_data(message, signed_message, public_key)
         result = self.send_transaction(input_data)
+        print(f"Transaction execution result: f{result}")
         assert_equal(result, "0x01")
         print("Invalid signature test passed")
 

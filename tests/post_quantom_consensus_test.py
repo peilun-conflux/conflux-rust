@@ -30,9 +30,8 @@ class PosCommittedBlockTest(DefaultConfluxTestFramework):
         wait_until(lambda: int(client.pos_status()["latestCommitted"], 0) >= 8)
         self.log.info("wait for PoS progress")
         wait_until(lambda: int(client.pos_status()["epoch"], 0) == 2)
-        self.log.info("PoS epoch 2 committed")
         wait_until(lambda: int(client.pos_status()["epoch"], 0) == 3)
-        self.log.info("PoS epoch 3 committed")
+        self.log.info("PoS epoch 3 committed, please run the verification script...")
         time.sleep(100000)
 
 
