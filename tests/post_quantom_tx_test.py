@@ -144,10 +144,11 @@ class SignTest(ConfluxTestFramework):
                 tx_hash = client.send_raw_tx(signed_tx.rawTransaction.hex())
                 # 等待交易被确认
                 client.wait_for_receipt(tx_hash)
-                self.log.info(f"Transaction sent and committed, hash={tx_hash}")
-                self.log.info("Please run the verification script...")
+                receipt = client.get_transaction_receipt(tx_hash)
+                self.log.info(f"Transaction sent and executed, receipt={receipt}")
+                # self.log.info("Please run the verification script...")
                 # 保持节点运行，等待验证脚本进行查询
-                time.sleep(100000)
+                # time.sleep(100000)
             else:
                 # 非法签名测试
                 self.log.info("Modify the tx signature and submit")
@@ -191,7 +192,8 @@ class SignTest(ConfluxTestFramework):
         tx_hash = client.send_tx(tx)
         # 等待交易被确认
         client.wait_for_receipt(tx_hash)
-        self.log.info(f"ECDSA signed transaction sent and committed, hash={tx_hash}")
+        receipt = client.get_transaction_receipt(tx_hash)
+        self.log.info(f"ECDSA signed transaction sent and executed, receipt={receipt}")
 
 
 if __name__ == "__main__":

@@ -48,11 +48,12 @@ impl Display for Vote {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(
             f,
-            "Vote: [vote data: {}, author: {}, is_timeout: {}, {}]",
+            "Vote: [vote data: {}, author: {}, is_timeout: {}, {}, signature={:?}]",
             self.vote_data,
             self.author.short_str(),
             self.is_timeout(),
-            self.ledger_info
+            self.ledger_info,
+            self.signature
         )
     }
 }

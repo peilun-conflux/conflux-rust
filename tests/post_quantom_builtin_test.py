@@ -72,7 +72,17 @@ class SignTest(DefaultConfluxTestFramework):
         # 编码输入数据
         input_data = self.encode_input_data(message, signed_message, public_key)
         # 发送交易并获取结果
-        result = self.send_transaction(input_data)
+        tx_hash = self.client.send_tx(self.client.new_contract_tx(receiver=PRECOMPILE_ADDRESS, data_hex=input_data),
+                                      wait_for_receipt=True)
+        receipt = self.client.get_transaction_receipt(tx_hash)
+        if receipt["outcomeStatus"] == "0x0":
+            # Call the precompile to get return value
+            result = self.client.call(
+                PRECOMPILE_ADDRESS,
+                "0x" + input_data,
+                )
+        else:
+            result = None
         print(f"Transaction execution result: {result}")
         # 断言结果应为0
         assert_equal(result, "0x00")

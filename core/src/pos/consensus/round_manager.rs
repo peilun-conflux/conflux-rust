@@ -871,7 +871,7 @@ impl RoundManager {
                     .execute_and_vote(proposal)
                     .await
                     .context("[RoundManager] Process proposal")?;
-                diem_debug!(self.new_log(LogEvent::Vote), "{}", vote);
+                diem_debug!(self.new_log(LogEvent::Vote), "{:?}", vote);
 
                 self.round_state.record_vote(vote.clone());
                 let vote_msg = VoteMsg::new(vote, self.block_store.sync_info());

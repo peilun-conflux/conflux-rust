@@ -451,7 +451,6 @@ impl SafetyRules {
         let author = self.signer()?.author();
         let ledger_info =
             Self::construct_ledger_info(proposed_block, vote_data.hash())?;
-        debug!("sign voted ledger_info: {:?}", ledger_info);
         let signature = self.sign(&ledger_info)?;
         let vote =
             Vote::new_with_signature(vote_data, author, ledger_info, signature);
