@@ -197,8 +197,9 @@ impl ExecutableBuiltinTx for DisputePayload {
             diem_error!("dispute tx error: {:?}", e);
             VMStatus::Error(StatusCode::CFX_INVALID_TX)
         })?;
-        let view = state_view.pos_state().current_view();
-        if !verify_dispute(self, view) {
+        let enforce_conflict =
+            state_view.pos_state().enforce_dispute_conflict();
+        if !verify_dispute(self, enforce_conflict) {
             return Err(VMStatus::Error(StatusCode::CFX_INVALID_TX));
         }
         Ok(vec![self.to_event()])
@@ -254,14 +255,15 @@ fn verify_dispute_proposal(
 /// Return true if the dispute is valid.
 /// Return false if the encoding is invalid or the provided signatures are
 /// not from the same round.
-pub fn verify_dispute(dispute: &DisputePayload, view: u64) -> bool {
+pub fn verify_dispute(
+    dispute: &DisputePayload, enforce_conflict: bool,
+) -> bool {
     let computed_address =
         from_consensus_public_key(&dispute.bls_pub_key, &dispute.vrf_pub_key);
     if dispute.address != computed_address {
         diem_trace!("Incorrect address and public keys");
         return false;
     }
-    let enforce_conflict = POS_STATE_CONFIG.enforce_dispute_conflict(view);
     match &dispute.conflicting_votes {
         ConflictSignature::Proposal((proposal_byte1, proposal_byte2)) => {
             let proposal1: Block =
@@ -376,40 +378,15 @@ mod tests {
         account_address::from_consensus_public_key,
         block_info::BlockInfo,
         ledger_info::{LedgerInfo, LedgerInfoWithSignatures},
-        term_state::pos_state_config::{PosStateConfig, POS_STATE_CONFIG},
         transaction::{ConflictSignature, DisputePayload},
         validator_signer::ValidatorSigner,
     };
     use std::collections::BTreeMap;
 
-    const TRANSITION: u64 = 100;
-    const BEFORE: u64 = 0;
-
-    fn install_config() {
-        // `POS_STATE_CONFIG` is a set-once process global; the executor crate
-        // has no other test seeding it, so a single set is safe.
-        POS_STATE_CONFIG
-            .set(PosStateConfig::new(
-                60,
-                1,
-                1,
-                0,
-                0,
-                u64::MAX,
-                0,
-                0,
-                u64::MAX,
-                u64::MAX,
-                u64::MAX,
-                0,
-                0,
-                60,
-                u64::MAX,
-                u64::MAX,
-                TRANSITION,
-            ))
-            .expect("POS_STATE_CONFIG already set");
-    }
+    // `verify_dispute`'s gating decision, injected directly so the test does
+    // not depend on the `POS_STATE_CONFIG` global.
+    const STRICT: bool = true;
+    const LAX: bool = false;
 
     /// A QC whose certified block is at round 0, so `QuorumCert::verify`
     /// short-circuits as a genesis QC (no signatures needed). Good enough to
@@ -435,8 +412,6 @@ mod tests {
 
     #[test]
     fn verify_dispute_conflict_gating() {
-        install_config();
-
         let signer = ValidatorSigner::random([7u8; 32]);
         let bls = signer.public_key();
         let vrf = signer.vrf_public_key().unwrap();
@@ -502,16 +477,16 @@ mod tests {
         let vb = make_vote(HashValue::new([2u8; 32]));
         assert_ne!(va.ledger_info().hash(), vb.ledger_info().hash());
 
-        // Genuine equivocation: accepted before and after the transition.
-        assert!(verify_dispute(&vote_dispute(&va, &vb), BEFORE));
-        assert!(verify_dispute(&vote_dispute(&va, &vb), TRANSITION));
+        // Genuine equivocation: accepted whether or not the check is enforced.
+        assert!(verify_dispute(&vote_dispute(&va, &vb), LAX));
+        assert!(verify_dispute(&vote_dispute(&va, &vb), STRICT));
 
-        // Duplicated vote: accepted before the transition, rejected after.
-        assert!(verify_dispute(&vote_dispute(&va, &va), BEFORE));
-        assert!(!verify_dispute(&vote_dispute(&va, &va), TRANSITION));
+        // Duplicated vote: accepted when lax, rejected when strict.
+        assert!(verify_dispute(&vote_dispute(&va, &va), LAX));
+        assert!(!verify_dispute(&vote_dispute(&va, &va), STRICT));
 
         // Same `LedgerInfo`, different serialized bytes (timeout signature
-        // added): accepted before the transition, rejected after.
+        // added): accepted when lax, rejected when strict.
         let regular = make_vote(HashValue::new([1u8; 32]));
         let mut timeout = regular.clone();
         timeout.add_timeout_signature(signer.sign(&timeout.timeout()));
@@ -520,27 +495,24 @@ mod tests {
             bcs::to_bytes(&timeout).unwrap()
         );
         assert_eq!(regular.ledger_info().hash(), timeout.ledger_info().hash());
-        assert!(verify_dispute(&vote_dispute(&regular, &timeout), BEFORE));
-        assert!(!verify_dispute(
-            &vote_dispute(&regular, &timeout),
-            TRANSITION
-        ));
+        assert!(verify_dispute(&vote_dispute(&regular, &timeout), LAX));
+        assert!(!verify_dispute(&vote_dispute(&regular, &timeout), STRICT));
 
         // Proposal branch: two distinct proposals (different timestamp ->
         // different id) by the target are a genuine equivocation.
         let pa = make_proposal(1000);
         let pb = make_proposal(2000);
         assert_ne!(pa.id(), pb.id());
-        assert!(verify_dispute(&proposal_dispute(&pa, &pb), TRANSITION));
+        assert!(verify_dispute(&proposal_dispute(&pa, &pb), STRICT));
 
-        // Identical proposal: same id -> rejected after the transition.
-        assert!(!verify_dispute(&proposal_dispute(&pa, &pa), TRANSITION));
+        // Identical proposal: same id -> rejected when strict.
+        assert!(!verify_dispute(&proposal_dispute(&pa, &pa), STRICT));
 
-        // NIL blocks have no proposer signature: accepted before the
-        // transition, rejected after.
+        // NIL blocks have no proposer signature: accepted when lax, rejected
+        // when strict.
         let na = Block::new_nil(2, genesis_qc());
         let nb = Block::new_nil(2, genesis_qc());
-        assert!(verify_dispute(&proposal_dispute(&na, &nb), BEFORE));
-        assert!(!verify_dispute(&proposal_dispute(&na, &nb), TRANSITION));
+        assert!(verify_dispute(&proposal_dispute(&na, &nb), LAX));
+        assert!(!verify_dispute(&proposal_dispute(&na, &nb), STRICT));
     }
 }

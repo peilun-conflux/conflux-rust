@@ -981,6 +981,12 @@ impl PosState {
 
     pub fn current_view(&self) -> u64 { self.current_view }
 
+    /// Whether `verify_dispute` should apply its stricter checks at the current
+    /// view (see [`PosStateConfigTrait::enforce_dispute_conflict`]).
+    pub fn enforce_dispute_conflict(&self) -> bool {
+        POS_STATE_CONFIG.enforce_dispute_conflict(self.current_view)
+    }
+
     pub fn skipped(&self) -> bool { self.skipped }
 
     pub fn next_evicted_term(&mut self) -> BTreeMap<H256, u64> {

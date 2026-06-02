@@ -103,7 +103,7 @@ impl Mempool {
                     pos_state.validate_dispute(dispute_payload).and(
                         verify_dispute(
                             dispute_payload,
-                            pos_state.current_view(),
+                            pos_state.enforce_dispute_conflict(),
                         )
                         .then_some(())
                         .ok_or(anyhow::anyhow!("invalid dispute")),
