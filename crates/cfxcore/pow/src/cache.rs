@@ -5,7 +5,8 @@ use super::{
     keccak::{keccak_512, H256},
     seed_compute::SeedHashCompute,
     shared::{
-        get_cache_size, Node, NODE_BYTES, POW_CACHE_ROUNDS, POW_STAGE_LENGTH,
+        get_cache_size, Node, MAX_POW_CACHE_ENTRIES, MAX_POW_CACHE_HEIGHT,
+        NODE_BYTES, POW_CACHE_ROUNDS, POW_STAGE_LENGTH,
     },
 };
 
@@ -13,17 +14,64 @@ use std::{collections::HashMap, slice, sync::Arc};
 
 pub type Cache = Vec<Node>;
 
+/// LRU-bounded map of stage -> cache. The `tick` is a monotonic access counter
+/// used to evict the least-recently-used stage once the map is full; it lets us
+/// keep the hot frontier stage (touched on every block) while dropping the
+/// one-off stages an attacker forces. See `MAX_POW_CACHE_ENTRIES`.
+struct CacheStore {
+    map: HashMap<u64, (Arc<Cache>, u64)>,
+    tick: u64,
+}
+
+impl CacheStore {
+    fn new() -> Self {
+        CacheStore {
+            map: HashMap::new(),
+            tick: 0,
+        }
+    }
+
+    fn get(&mut self, stage: &u64) -> Option<Arc<Cache>> {
+        self.tick += 1;
+        let tick = self.tick;
+        self.map.get_mut(stage).map(|entry| {
+            entry.1 = tick;
+            entry.0.clone()
+        })
+    }
+
+    fn insert(&mut self, stage: u64, cache: Arc<Cache>) {
+        self.tick += 1;
+        // Evict least-recently-used stages until there is room for the new one.
+        while self.map.len() >= MAX_POW_CACHE_ENTRIES
+            && !self.map.contains_key(&stage)
+        {
+            if let Some(lru) = self
+                .map
+                .iter()
+                .min_by_key(|(_, (_, tick))| *tick)
+                .map(|(stage, _)| *stage)
+            {
+                self.map.remove(&lru);
+            } else {
+                break;
+            }
+        }
+        self.map.insert(stage, (cache, self.tick));
+    }
+}
+
 #[derive(Clone)]
 pub struct CacheBuilder {
     seedhash: Arc<Mutex<SeedHashCompute>>,
-    caches: Arc<Mutex<HashMap<u64, Arc<Cache>>>>,
+    caches: Arc<Mutex<CacheStore>>,
 }
 
 impl CacheBuilder {
     pub fn new() -> Self {
         CacheBuilder {
             seedhash: Arc::new(Mutex::new(SeedHashCompute::default())),
-            caches: Arc::new(Mutex::new(HashMap::new())),
+            caches: Arc::new(Mutex::new(CacheStore::new())),
         }
     }
 
@@ -41,11 +89,18 @@ impl CacheBuilder {
     }
 
     pub fn new_cache(&self, block_height: u64) -> Arc<Cache> {
+        // Clamp before deriving the memo key, ident, and size so an
+        // attacker-supplied height cannot drive an unbounded/overflowing cache
+        // size, and so every height beyond the bound collapses onto a single
+        // stage. See `MAX_POW_CACHE_HEIGHT`. The number of distinct in-range
+        // stages is bounded separately by `CacheStore` (see
+        // `MAX_POW_CACHE_ENTRIES`).
+        let block_height = block_height.min(MAX_POW_CACHE_HEIGHT);
         let stage = block_height / POW_STAGE_LENGTH;
 
         let mut caches = self.caches.lock();
         if let Some(cache) = caches.get(&stage) {
-            return cache.clone();
+            return cache;
         }
 
         let ident = self.block_height_to_ident(block_height);
@@ -130,6 +185,39 @@ unsafe fn initialize_memory(memory: *mut Node, num_nodes: usize, ident: &H256) {
                 &data.bytes,
                 &mut nodes.get_unchecked_mut(i).bytes,
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cache, CacheStore, MAX_POW_CACHE_ENTRIES};
+    use std::sync::Arc;
+
+    fn dummy() -> Arc<Cache> { Arc::new(Cache::new()) }
+
+    // The map must never retain more than the configured number of stages, so a
+    // peer cannot pin memory by streaming headers at many distinct stages.
+    #[test]
+    fn store_caps_entry_count() {
+        let mut store = CacheStore::new();
+        for stage in 0..(MAX_POW_CACHE_ENTRIES as u64 * 4) {
+            store.insert(stage, dummy());
+            assert!(store.map.len() <= MAX_POW_CACHE_ENTRIES);
+        }
+    }
+
+    // The hot frontier stage is touched on every block; eviction must drop the
+    // one-off (attacker) stages and keep the repeatedly-accessed one.
+    #[test]
+    fn store_keeps_recently_used_stage() {
+        let mut store = CacheStore::new();
+        let hot = 7u64;
+        store.insert(hot, dummy());
+        for stage in 100..(100 + MAX_POW_CACHE_ENTRIES as u64 * 3) {
+            store.insert(stage, dummy());
+            // Keep touching the hot stage so it stays most-recently-used.
+            assert!(store.get(&hot).is_some(), "hot stage was evicted");
         }
     }
 }
