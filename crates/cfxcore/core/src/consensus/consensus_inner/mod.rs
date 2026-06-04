@@ -3857,12 +3857,10 @@ impl ConsensusGraphInner {
                 // Both in memory. Just use Link-Cut-Tree.
                 self.ancestor_at(*me, self.arena[*ancestor].height) == *ancestor
             }
-            // TODO(lpl): Check if it's possible to go beyond checkpoint.
-            // TODO(lpl): If we want to check ancestor and me are both on pivot
-            // chain, we might need to always persist
-            // block_execution_result for full nodes. Or include
-            // height in the validation?
-            (_, Some(_me)) => {
+            // `ancestor` (and possibly `me`) is not in the arena: pruned before
+            // the checkpoint, or not processed yet (PoS ahead of PoW sync), so
+            // the in-arena Link-Cut-Tree check is unavailable.
+            (_, Some(me)) => {
                 // This should not happen after catching up for a normal node.
                 if !self.header_only {
                     warn!(
@@ -3870,16 +3868,115 @@ impl ConsensusGraphInner {
                         self.pivot_block_processed(ancestor_hash)
                     );
                 }
-                // ancestor is before checkpoint and is on pivot chain, so me
-                // must be in the subtree.
-                true
+                self.pivot_decision_fall_through_valid(
+                    ancestor_hash,
+                    me_hash,
+                    Some(*me),
+                )
             }
             (_, _) => {
                 // This should not happen after catching up for a normal node.
                 if !self.header_only {
                     warn!("ancestor and me are both not in consensus graph, processed={} {}", self.pivot_block_processed(ancestor_hash), self.pivot_block_processed(me_hash));
                 }
-                true
+                self.pivot_decision_fall_through_valid(
+                    ancestor_hash,
+                    me_hash,
+                    None,
+                )
+            }
+        }
+    }
+
+    /// Validate that `me` descends from the (trusted) committed pivot decision
+    /// `ancestor` when the in-arena link-cut-tree check is unavailable (one or
+    /// both pruned before the checkpoint, or not processed yet because PoS is
+    /// ahead of PoW sync).
+    ///
+    /// Rejects ONLY on positive proof from immutable data — `me` not on a
+    /// `POS_TERM_EPOCHS` boundary, an `ancestor` not strictly shallower, or
+    /// `me`'s own parent chain resolving to a different block at `ancestor`'s
+    /// height — and stays permissive otherwise. It never consults this node's
+    /// pivot *selection*, only `me`'s immutable parent ancestry, so it cannot
+    /// reject a valid decision when this node's (PoW-formed) checkpoint chain
+    /// disagrees with PoS finality below the checkpoint — a divergence the
+    /// consensus tolerates by assumption (see `compute_force_confirm`), e.g.
+    /// during header-first sync. This is a proposal-time vote gate, skipped
+    /// under `catch_up_mode`.
+    fn pivot_decision_fall_through_valid(
+        &self, ancestor_hash: &H256, me_hash: &H256, me_arena: Option<usize>,
+    ) -> bool {
+        let me_height = match me_arena {
+            Some(index) => self.arena[index].height,
+            None => match self.data_man.block_height_by_hash(me_hash) {
+                Some(height) => height,
+                None => return true,
+            },
+        };
+        if me_height % POS_TERM_EPOCHS != 0 {
+            return false;
+        }
+        let ancestor_height =
+            match self.data_man.block_height_by_hash(ancestor_hash) {
+                Some(height) => height,
+                None => return true,
+            };
+        if ancestor_height >= me_height {
+            return false;
+        }
+        match self.pivot_ancestor_hash_at(me_hash, me_arena, ancestor_height) {
+            Some(hash) => hash == *ancestor_hash,
+            None => true,
+        }
+    }
+
+    /// Hash of `me`'s ancestor at `target_height` (which must be below `me`'s
+    /// height) on the immutable parent tree, or `None` if it cannot be resolved
+    /// from locally available data.
+    fn pivot_ancestor_hash_at(
+        &self, me_hash: &H256, me_arena: Option<usize>, target_height: u64,
+    ) -> Option<H256> {
+        // Fast path: when `me` is in the arena and descends from the era
+        // genesis, its pre-checkpoint ancestry is exactly this node's executed
+        // pivot chain, so the executed epoch set answers in O(1) without a
+        // walk. Gating on the (immutable) descent is what keeps this
+        // node-independent: a `me` that does not descend from the checkpoint
+        // falls through to the parent walk on its own chain.
+        if target_height < self.cur_era_genesis_height {
+            if let Some(index) = me_arena {
+                if self.ancestor_at(index, self.cur_era_genesis_height)
+                    == self.cur_era_genesis_block_arena_index
+                {
+                    return self
+                        .get_pivot_hash_from_epoch_number(target_height)
+                        .ok();
+                }
+            }
+        }
+        // Fallback: walk `me`'s own parent headers down to `target_height`. A
+        // missing header, an overshoot, or cap exhaustion yields `None`
+        // (permissive), never a reject. The cap bounds vote-path cost and is a
+        // deliberate enforcement gap: an off-checkpoint `me` more than
+        // `WALK_CAP` ancestors above `ancestor` is accepted unverified (a
+        // checkpoint-descending `me` is resolved in O(1) above, regardless of
+        // distance, so only off-canonical proposals can reach the cap).
+        const WALK_CAP: u64 = 512;
+        let mut current = *me_hash;
+        let mut steps = 0;
+        loop {
+            let header = self.data_man.block_header_by_hash(&current)?;
+            let height = header.height();
+            if height <= target_height {
+                return if height == target_height {
+                    Some(current)
+                } else {
+                    None
+                };
+            }
+            current = *header.parent_hash();
+            steps += 1;
+            if steps > WALK_CAP {
+                return None;
             }
         }
     }
