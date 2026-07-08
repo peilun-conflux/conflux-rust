@@ -2082,8 +2082,6 @@ dependencies = [
  "auto_impl",
  "dyn-clone",
  "futures-util",
- "pin-project",
- "rayon",
  "thiserror 2.0.18",
  "tokio",
 ]

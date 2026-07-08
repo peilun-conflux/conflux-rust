@@ -1,5 +1,4 @@
-//! Spawns a blocking task. CPU heavy tasks are executed with the `rayon`
-//! library. IO heavy tasks are executed on the `tokio` runtime.
+//! Spawns IO-heavy blocking tasks on the `tokio` runtime.
 
 use crate::error::EthApiError;
 use cfx_tasks::TaskSpawner;
@@ -17,8 +16,7 @@ pub trait SpawnBlocking: Clone + Send + Sync + 'static {
     /// Executes the future on a new blocking task.
     ///
     /// Note: This is expected for futures that are dominated by blocking IO
-    /// operations, for tracing or CPU bound operations in general use
-    /// [`spawn_tracing`](Self::spawn_tracing).
+    /// operations.
     fn spawn_blocking_io<F, R>(
         &self, f: F,
     ) -> impl Future<Output = Result<R, ErrorObjectOwned>> + Send

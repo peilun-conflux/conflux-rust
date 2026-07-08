@@ -43,8 +43,6 @@ use tokio::{
     task::JoinHandle,
 };
 
-#[cfg(feature = "rayon")]
-pub mod pool;
 pub mod shutdown;
 
 #[auto_impl::auto_impl(&, Arc)]
