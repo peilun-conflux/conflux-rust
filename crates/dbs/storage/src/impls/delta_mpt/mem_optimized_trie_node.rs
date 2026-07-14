@@ -12,7 +12,7 @@ pub struct MemOptimizedTrieNode<CacheAlgoDataT: CacheAlgoDataTrait> {
     /// space per trie node.
     ///
     /// The next vacant index is xor()ed by
-    /// NodeRefDeltaMptCompact::PERSISTENT_KEY_BIT so that 0 can be
+    /// NodeRefDeltaMptCompact::DIRTY_SLOT_LIMIT so that 0 can be
     /// reserved for "occupied" label.
     slab_next_vacant_index: u32,
 
@@ -110,12 +110,50 @@ pub enum TrieNodeAction {
 }
 
 #[cfg(test)]
-use super::node_memory_manager::TrieNodeDeltaMpt;
+use super::node_memory_manager::{TrieNodeDeltaMpt, TrieNodeDeltaMptCell};
 #[test]
 fn test_mem_optimized_trie_node_size() {
     assert_eq!(std::mem::size_of::<TrieNodeDeltaMpt>(), 80);
     // TrieNodeDeltaMpt itself as Slab entry saves space.
     assert_ne!(std::mem::size_of::<Entry<TrieNodeDeltaMpt>>(), 80)
+}
+
+#[test]
+fn test_vacant_index_zero_round_trips() {
+    // Slot 0 is a valid slab key, so a vacant entry whose next vacant index
+    // is 0 must still read back as vacant.
+    for next in [0usize, 1, 12345] {
+        let entry = TrieNodeDeltaMpt::from_vacant_index(next);
+        assert!(entry.is_vacant(), "next={}", next);
+        assert_eq!(entry.get_next_vacant_index(), next);
+    }
+}
+
+#[test]
+fn test_from_value_clears_vacant_tag() {
+    // from_value is the only occupied-entry constructor that takes an
+    // arbitrary node, so it must not preserve a stale vacant tag.
+    let node =
+        TrieNodeDeltaMpt::from_value(TrieNodeDeltaMpt::from_vacant_index(5));
+    assert!(!node.is_vacant());
+}
+
+#[test]
+fn test_slab_remove_with_slot_zero_at_free_list_head() {
+    let slab =
+        Slab::<TrieNodeDeltaMptCell, TrieNodeDeltaMptCell>::with_capacity(4);
+    let node = TrieNodeDeltaMpt::default();
+    assert_eq!(slab.insert(&node).unwrap(), 0);
+    assert_eq!(slab.insert(&node).unwrap(), 1);
+    slab.remove(0).unwrap();
+    // Slot 0 heads the free list now, so slot 1's vacant entry stores
+    // next == 0.
+    slab.remove(1).unwrap();
+    assert!(!slab.contains(1));
+    assert!(slab.remove(1).is_err());
+    // The free list must still walk 1 -> 0.
+    assert_eq!(slab.insert(&node).unwrap(), 1);
+    assert_eq!(slab.insert(&node).unwrap(), 0);
 }
 
 make_parallel_field_maybe_in_place_byte_array_memory_manager!(
@@ -526,11 +564,17 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> EntryTrait
 {
     type EntryType = MemOptimizedTrieNode<CacheAlgoDataT>;
 
-    fn from_value(value: Self) -> Self { value }
+    fn from_value(mut value: Self) -> Self {
+        // 0 is the "occupied" label; don't trust the incoming field, which
+        // may carry a stale vacant tag.
+        value.slab_next_vacant_index = 0;
+        value
+    }
 
     fn from_vacant_index(next: usize) -> Self {
         Self {
-            slab_next_vacant_index: next as u32,
+            slab_next_vacant_index: (next as u32)
+                ^ NodeRefDeltaMptCompact::DIRTY_SLOT_LIMIT,
             children_table: Default::default(),
             merkle_hash: Default::default(),
             path_mask: CompressedPathRaw::NO_MISSING_NIBBLE,
@@ -545,7 +589,8 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> EntryTrait
     }
 
     fn is_vacant(&self) -> bool {
-        // A valid next vacant index can't be 0.
+        // Any valid next vacant index is below DIRTY_SLOT_LIMIT, so its
+        // xor()ed encoding can't be 0; 0 is the "occupied" label.
         self.slab_next_vacant_index as CompactNodeRef
             != MaybeNodeRefDeltaMptCompact::NULL
     }
@@ -557,7 +602,8 @@ impl<CacheAlgoDataT: CacheAlgoDataTrait> EntryTrait
     }
 
     fn get_next_vacant_index(&self) -> usize {
-        self.slab_next_vacant_index as usize
+        (self.slab_next_vacant_index ^ NodeRefDeltaMptCompact::DIRTY_SLOT_LIMIT)
+            as usize
     }
 
     fn get_occupied_ref(&self) -> &MemOptimizedTrieNode<CacheAlgoDataT> { self }
