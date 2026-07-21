@@ -24,16 +24,39 @@ use diem_types::{
     transaction::{SignedTransaction, TransactionPayload},
 };
 use std::{
-    collections::{hash_map::Values, HashMap, HashSet},
+    collections::{hash_map::Values, HashMap},
     time::Duration,
 };
+
+/// Per-signer pivot-decision transactions for one decision, keyed by sender
+/// (one per signer), tagged with the decision `height` for the commit-time
+/// sweep.
+pub(crate) struct PivotDecisionSet {
+    height: u64,
+    signers: HashMap<AccountAddress, HashValue>,
+}
+
+impl PivotDecisionSet {
+    fn new(height: u64) -> Self {
+        Self {
+            height,
+            signers: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn iter(
+        &self,
+    ) -> impl Iterator<Item = (AccountAddress, HashValue)> + '_ {
+        self.signers.iter().map(|(&addr, &hash)| (addr, hash))
+    }
+}
 
 /// TransactionStore is in-memory storage for all transactions in mempool.
 pub struct TransactionStore {
     // normal transactions
     transactions: AccountTransactions,
     // pivot decision helper structure
-    pivot_decisions: HashMap<HashValue, HashSet<(AccountAddress, HashValue)>>,
+    pivot_decisions: HashMap<HashValue, PivotDecisionSet>,
 
     // Evicts txns after `system_transaction_timeout` so stalled commit
     // callbacks cannot clog the mempool indefinitely.
@@ -46,8 +69,7 @@ pub struct TransactionStore {
     capacity_per_sender: usize,
 }
 
-pub type PivotDecisionIter<'a> =
-    Values<'a, HashValue, HashSet<(AccountAddress, HashValue)>>;
+pub type PivotDecisionIter<'a> = Values<'a, HashValue, PivotDecisionSet>;
 
 impl TransactionStore {
     pub(crate) fn new(config: &MempoolConfig) -> Self {
@@ -84,10 +106,7 @@ impl TransactionStore {
         &self, hash: &HashValue,
     ) -> Vec<HashValue> {
         if let Some(decisions) = self.pivot_decisions.get(hash) {
-            decisions
-                .iter()
-                .map(|(_, tx_hash)| tx_hash.clone())
-                .collect::<_>()
+            decisions.signers.values().copied().collect()
         } else {
             vec![]
         }
@@ -106,18 +125,17 @@ impl TransactionStore {
             return MempoolStatus::new(MempoolStatusCode::Accepted);
         }
 
-        // Only the payload is signed, so a validator could mint distinct-hash
-        // duplicates of one vote by varying `chain_id`; keep one per sender.
         if let TransactionPayload::PivotDecision(pivot_decision) =
             txn.txn.payload()
         {
-            let already_voted = self
+            // Only the payload is signed, so a validator could mint
+            // distinct-hash duplicates of one pivot decision by varying
+            // `chain_id`; keep one per sender.
+            let already_signed = self
                 .pivot_decisions
                 .get(&pivot_decision.hash())
-                .is_some_and(|set| {
-                    set.iter().any(|(addr, _)| *addr == address)
-                });
-            if already_voted {
+                .is_some_and(|set| set.signers.contains_key(&address));
+            if already_signed {
                 return MempoolStatus::new(MempoolStatusCode::Accepted);
             }
         }
@@ -150,15 +168,14 @@ impl TransactionStore {
             txn.txn.payload()
         {
             let pivot_decision_hash = pivot_decision.hash();
-            self.pivot_decisions
+            let entry = self
+                .pivot_decisions
                 .entry(pivot_decision_hash)
-                .or_insert_with(HashSet::new);
-            if let Some(account_decision) =
-                self.pivot_decisions.get_mut(&pivot_decision_hash)
-            {
-                diem_debug!("txpool::insert pivot {:?}", hash);
-                account_decision.insert((address, hash));
-            }
+                .or_insert_with(|| {
+                    PivotDecisionSet::new(pivot_decision.height)
+                });
+            diem_debug!("txpool::insert pivot {:?}", hash);
+            entry.signers.insert(address, hash);
             self.transactions.insert(hash, txn, true);
         } else {
             self.transactions.insert(hash, txn, false);
@@ -173,26 +190,39 @@ impl TransactionStore {
         MempoolStatus::new(MempoolStatusCode::Accepted)
     }
 
-    /// Handles transaction commit: deletes the transaction and cleans up
-    /// its entries in the timeline and TTL indexes.
+    /// The one path every `self.transactions` removal takes: log it, then
+    /// update the indexes.
+    fn remove_logged(
+        &mut self, hash: &HashValue, log: &mut TxnsLog,
+    ) -> Option<MempoolTransaction> {
+        let txn = self.transactions.remove(hash)?;
+        log.add(txn.get_sender(), txn.get_hash());
+        self.index_remove(&txn);
+        Some(txn)
+    }
+
+    /// Removes a committed transaction by hash.
     pub(crate) fn commit_transaction(&mut self, hash: HashValue) {
         let mut txns_log = TxnsLog::new();
-        if let Some(transaction) = self.transactions.remove(&hash) {
-            txns_log.add(transaction.get_sender(), transaction.get_hash());
-            self.index_remove(&transaction);
-            // handle pivot decision
-            let payload = transaction.txn.into_raw_transaction().into_payload();
-            if let TransactionPayload::PivotDecision(pivot_decision) = payload {
-                let pivot_decision_hash = pivot_decision.hash();
-                if let Some(indices) =
-                    self.pivot_decisions.remove(&pivot_decision_hash)
-                {
-                    for (_, hash) in indices {
-                        if let Some(txn) = self.transactions.remove(&hash) {
-                            txns_log.add(txn.get_sender(), txn.get_hash());
-                            self.index_remove(&txn);
-                        }
-                    }
+        self.remove_logged(&hash, &mut txns_log);
+        diem_debug!(LogSchema::new(LogEntry::CleanCommittedTxn).txns(txns_log));
+    }
+
+    /// Sweeps every pivot-decision set at or below a committed height,
+    /// including obsolete lower and conflicting same-height sets that can no
+    /// longer commit.
+    pub(crate) fn commit_pivot_height(&mut self, height: u64) {
+        let mut txns_log = TxnsLog::new();
+        let obsolete: Vec<HashValue> = self
+            .pivot_decisions
+            .iter()
+            .filter(|(_, v)| v.height <= height)
+            .map(|(k, _)| *k)
+            .collect();
+        for key in obsolete {
+            if let Some(entry) = self.pivot_decisions.remove(&key) {
+                for (_, tx_hash) in entry.signers {
+                    self.remove_logged(&tx_hash, &mut txns_log);
                 }
             }
         }
@@ -258,22 +288,19 @@ impl TransactionStore {
 
         let mut gc_txns_log = TxnsLog::new();
         for key in gc_txns.iter() {
-            if let Some(txn) = self.transactions.remove(&key.hash) {
+            if let Some(txn) = self.remove_logged(&key.hash, &mut gc_txns_log) {
                 let sender = txn.get_sender();
-                let tx_hash = txn.get_hash();
-                gc_txns_log.add(sender, tx_hash);
-                self.index_remove(&txn);
                 if let TransactionPayload::PivotDecision(pivot_decision) =
                     txn.txn.into_raw_transaction().into_payload()
                 {
-                    // Drop only this entry: other validators' live votes
+                    // Drop only this entry: other signers' live transactions
                     // share this set.
                     let pivot_decision_hash = pivot_decision.hash();
-                    if let Some(account_decision) =
+                    if let Some(entry) =
                         self.pivot_decisions.get_mut(&pivot_decision_hash)
                     {
-                        account_decision.remove(&(sender, tx_hash));
-                        if account_decision.is_empty() {
+                        entry.signers.remove(&sender);
+                        if entry.signers.is_empty() {
                             self.pivot_decisions.remove(&pivot_decision_hash);
                         }
                     }
@@ -343,6 +370,13 @@ mod tests {
         )
     }
 
+    fn pivot(height: u64, block_hash_byte: u8) -> PivotBlockDecision {
+        PivotBlockDecision {
+            block_hash: H256::from([block_hash_byte; 32]),
+            height,
+        }
+    }
+
     fn mk_pivot_txn(
         sk: &BLSPrivateKey, sender: AccountAddress,
         decision: &PivotBlockDecision, chain_id: u64,
@@ -395,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn gc_drops_only_expired_pivot_vote_keeping_other_validators() {
+    fn gc_drops_only_expired_pivot_entry_keeping_other_validators() {
         let mut store = store_with_cap(8);
         let (sk_a, _, sender_a) = new_sender();
         let (sk_b, _, sender_b) = new_sender();
@@ -408,7 +442,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap();
 
-        // Validator A's vote is already past its system TTL; B's is still live.
+        // Validator A's transaction is already past its system TTL; B's is
+        // still live.
         let mut a = mk_pivot_txn(&sk_a, sender_a, &decision, 1);
         a.expiration_time = Duration::from_secs(1);
         let mut b = mk_pivot_txn(&sk_b, sender_b, &decision, 1);
@@ -419,7 +454,7 @@ mod tests {
 
         store.gc_by_system_ttl();
 
-        // B's live vote survives; only A's expired entry is removed.
+        // B's live entry survives; only A's expired entry is removed.
         assert_eq!(store.get_pivot_decisions(&pivot_hash).len(), 1);
         assert_eq!(store.per_sender_count.get(&sender_a), None);
         assert_eq!(store.per_sender_count[&sender_b], 1);
@@ -433,6 +468,47 @@ mod tests {
         );
         assert_eq!(store.get_pivot_decisions(&pivot_hash).len(), 1);
         assert_eq!(store.per_sender_count[&sender_b], 1);
+    }
+
+    /// Cleanup keys on committed height, not the envelope hash: committing d1
+    /// via a `chain_id` wrapper never stored here still clears d1's set, plus
+    /// every resident obsolete set (lower d0, conflicting same-height d2); a
+    /// higher d_hi survives, and a repeat sweep is a no-op.
+    #[test]
+    fn cleanup_by_committed_height() {
+        let mut store = store_with_cap(8);
+        let (sk0, _, s0) = new_sender();
+        let (sk1, _, s1) = new_sender();
+        let (sk2, _, s2) = new_sender();
+        let (sk_hi, _, s_hi) = new_sender();
+        let d0 = pivot(100, 10);
+        let d1 = pivot(120, 11);
+        let d2 = pivot(120, 12); // same height as d1, conflicting branch
+        let d_hi = pivot(121, 13);
+        for (sk, s, d) in [(&sk0, s0, &d0), (&sk1, s1, &d1), (&sk2, s2, &d2)] {
+            assert_eq!(
+                store.insert(mk_pivot_txn(sk, s, d, 1)).code,
+                MempoolStatusCode::Accepted
+            );
+        }
+        assert_eq!(
+            store.insert(mk_pivot_txn(&sk_hi, s_hi, &d_hi, 1)).code,
+            MempoolStatusCode::Accepted
+        );
+
+        // The network commits d1 via a chain_id=2 wrapper never stored here.
+        let committed_d1 = mk_pivot_txn(&sk1, s1, &d1, 2).get_hash();
+        assert!(store.get(&committed_d1).is_none());
+        store.commit_transaction(committed_d1);
+        store.commit_pivot_height(d1.height);
+        store.commit_pivot_height(d1.height); // repeat = no-op
+
+        for (d, s) in [(&d0, &s0), (&d1, &s1), (&d2, &s2)] {
+            assert!(store.get_pivot_decisions(&d.hash()).is_empty());
+            assert_eq!(store.per_sender_count.get(s), None);
+        }
+        assert_eq!(store.get_pivot_decisions(&d_hi.hash()).len(), 1);
+        assert_eq!(store.per_sender_count[&s_hi], 1);
     }
 
     #[test]

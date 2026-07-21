@@ -53,6 +53,12 @@ impl Mempool {
         self.transactions.commit_transaction(hash);
     }
 
+    /// Cleans up pivot-decision transactions for a committed decision at
+    /// `height`.
+    pub(crate) fn commit_pivot_height(&mut self, height: u64) {
+        self.transactions.commit_pivot_height(height);
+    }
+
     /// Used to add a transaction to the Mempool.
     /// Performs basic validation: checks account's sequence number.
     pub(crate) fn add_txn(
@@ -120,10 +126,10 @@ impl Mempool {
         let mut chosen_pivot_tx = None;
         // iterate all pivot decision transaction
         for pivot_decision_set in self.transactions.iter_pivot_decision() {
-            // Admission accepts node_map (non-committee) voters, and
+            // Admission accepts node_map (non-committee) senders, and
             // `check_voting_power` errors `UnknownAuthor` on them; filter to
-            // the committee so one such vote can't fail a valid quorum.
-            let committee_votes: Vec<&(AccountAddress, HashValue)> =
+            // the committee so one such entry can't fail a valid quorum.
+            let committee_signers: Vec<(AccountAddress, HashValue)> =
                 pivot_decision_set
                     .iter()
                     .filter(|(addr, _)| {
@@ -132,12 +138,12 @@ impl Mempool {
                     .collect();
             if validators
                 .check_voting_power(
-                    committee_votes.iter().map(|(addr, _)| addr),
+                    committee_signers.iter().map(|(addr, _)| addr),
                 )
                 .is_ok()
             {
-                // Any committee vote carries the same payload; use the first.
-                let Some(pivot_decision) = committee_votes
+                // Any committee signer carries the same payload; use the first.
+                let Some(pivot_decision) = committee_signers
                     .iter()
                     .find_map(|(_, hash)| self.transactions.get(hash))
                 else {
@@ -167,8 +173,9 @@ impl Mempool {
                 self.transactions.get_pivot_decisions(&pivot_decision_hash);
             let senders: Vec<AccountAddress> =
                 validators.get_ordered_account_addresses_iter().collect();
+            // Signers are keyed by sender, so signer indices are already
+            // distinct.
             let mut signatures = vec![];
-            let mut seen_signers = HashSet::new();
             for hash in &txn_hashes {
                 if let Some(txn) = self.transactions.get(hash) {
                     match txn.authenticator() {
@@ -176,11 +183,7 @@ impl Mempool {
                             if let Ok(index) =
                                 senders.binary_search(&txn.sender())
                             {
-                                // One slot per validator: guard the index so a
-                                // repeated signer can't abort aggregation.
-                                if seen_signers.insert(index) {
-                                    signatures.push((signature, index));
-                                }
+                                signatures.push((signature, index));
                             }
                         }
                         _ => unreachable!(),
@@ -258,7 +261,7 @@ mod tests {
         (NodeID::new(sk.public_key(), vrf_sk.public_key()), sk)
     }
 
-    fn insert_pivot_vote(
+    fn insert_pivot_decision(
         mempool: &mut Mempool, node: &NodeID, sk: &ConsensusPrivateKey,
         decision: &PivotBlockDecision,
     ) {
@@ -276,18 +279,18 @@ mod tests {
         );
     }
 
-    /// A registered non-committee voter (admission gates on `node_map`,
+    /// A registered non-committee signer (admission gates on `node_map`,
     /// broader than the committee) must not stall aggregation of a committee
     /// quorum: it is ignored, not counted as `UnknownAuthor`.
     #[test]
-    fn get_block_aggregates_committee_quorum_ignoring_non_committee_voter() {
+    fn get_block_aggregates_committee_quorum_ignoring_non_committee_signer() {
         POS_STATE_CONFIG.get_or_init(PosStateConfig::default);
         let (v1, sk1) = new_node();
         let (v2, sk2) = new_node();
         let (v3, sk3) = new_node();
         let (outsider, sk_out) = new_node();
 
-        // All four are registered (node_map), so the outsider's vote is
+        // All four are registered (node_map), so the outsider's transaction is
         // admitted; the committee is only v1/v2/v3.
         let initial_nodes = vec![
             (v1.clone(), 1),
@@ -312,11 +315,11 @@ mod tests {
             block_hash: H256::from([9u8; 32]),
             height: 1,
         };
-        // Full committee reaches quorum; the outsider also votes.
-        insert_pivot_vote(&mut mempool, &v1, &sk1, &decision);
-        insert_pivot_vote(&mut mempool, &v2, &sk2, &decision);
-        insert_pivot_vote(&mut mempool, &v3, &sk3, &decision);
-        insert_pivot_vote(&mut mempool, &outsider, &sk_out, &decision);
+        // Full committee reaches quorum; the outsider also submits.
+        insert_pivot_decision(&mut mempool, &v1, &sk1, &decision);
+        insert_pivot_decision(&mut mempool, &v2, &sk2, &decision);
+        insert_pivot_decision(&mut mempool, &v3, &sk3, &decision);
+        insert_pivot_decision(&mut mempool, &outsider, &sk_out, &decision);
 
         let block =
             mempool.get_block(10, HashSet::new(), &pos_state, validators);
@@ -329,7 +332,7 @@ mod tests {
         });
         assert!(
             aggregated_pivot,
-            "committee quorum must aggregate despite a non-committee voter",
+            "committee quorum must aggregate despite a non-committee signer",
         );
     }
 }

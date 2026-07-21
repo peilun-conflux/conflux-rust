@@ -240,7 +240,7 @@ pub(crate) async fn process_committed_transactions(
         LogEvent::Received
     )
     .state_sync_msg(&req));
-    commit_txns(&mempool, req.transactions).await;
+    commit_txns(&mempool, req.transactions, req.committed_pivot_height).await;
     if req.callback.send(Ok(CommitResponse::success())).is_err() {
         diem_error!(LogSchema::event_log(
             LogEntry::StateSyncCommit,
@@ -295,10 +295,14 @@ pub(crate) async fn process_consensus_request(
 
 async fn commit_txns(
     mempool: &Mutex<CoreMempool>, transactions: Vec<CommittedTransaction>,
+    committed_pivot_height: Option<u64>,
 ) {
     let mut pool = mempool.lock();
 
     for transaction in transactions {
         pool.remove_transaction(transaction.hash);
+    }
+    if let Some(height) = committed_pivot_height {
+        pool.commit_pivot_height(height);
     }
 }

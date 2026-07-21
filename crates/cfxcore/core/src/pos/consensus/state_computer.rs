@@ -12,7 +12,8 @@ use consensus_types::block::Block;
 use diem_crypto::HashValue;
 use diem_logger::prelude::*;
 use diem_types::{
-    ledger_info::LedgerInfoWithSignatures, transaction::Transaction,
+    ledger_info::LedgerInfoWithSignatures,
+    transaction::{Transaction, TransactionPayload},
 };
 use executor_types::{
     BlockExecutor, Error as ExecutionError, StateComputeResult,
@@ -45,18 +46,22 @@ impl ExecutionProxy {
 
     /// Notify mempool of committed transactions so it can prune them.
     async fn notify_mempool(&self, committed_txns: Vec<Transaction>) {
-        let user_txns: Vec<CommittedTransaction> = committed_txns
-            .iter()
-            .filter_map(|txn| match txn {
-                Transaction::UserTransaction(signed_txn) => {
-                    Some(CommittedTransaction {
-                        sender: signed_txn.sender(),
-                        hash: signed_txn.hash(),
-                    })
+        let mut user_txns = Vec::new();
+        let mut committed_pivot_height: Option<u64> = None;
+        for txn in &committed_txns {
+            if let Transaction::UserTransaction(signed_txn) = txn {
+                user_txns.push(CommittedTransaction {
+                    sender: signed_txn.sender(),
+                    hash: signed_txn.hash(),
+                });
+                if let TransactionPayload::PivotDecision(d) =
+                    signed_txn.payload()
+                {
+                    committed_pivot_height =
+                        committed_pivot_height.max(Some(d.height));
                 }
-                _ => None,
-            })
-            .collect();
+            }
+        }
 
         if user_txns.is_empty() {
             return;
@@ -65,6 +70,7 @@ impl ExecutionProxy {
         let (callback, cb_receiver) = oneshot::channel();
         let notification = CommitNotification {
             transactions: user_txns,
+            committed_pivot_height,
             callback,
         };
 

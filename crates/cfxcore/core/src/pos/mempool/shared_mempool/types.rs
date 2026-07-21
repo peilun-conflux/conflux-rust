@@ -153,6 +153,10 @@ pub struct ConsensusResponse {
 /// This notifies mempool to remove committed txns.
 pub struct CommitNotification {
     pub transactions: Vec<CommittedTransaction>,
+    /// Height of the committed pivot decision (max, if the batch spans
+    /// several); the mempool sweeps every pivot-decision set at or below it.
+    /// Kept per notification rather than per txn: it is a whole-commit fact.
+    pub committed_pivot_height: Option<u64>,
     pub callback: oneshot::Sender<Result<CommitResponse>>,
 }
 
