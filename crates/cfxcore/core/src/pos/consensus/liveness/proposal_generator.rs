@@ -210,33 +210,52 @@ impl ProposalGenerator {
             match new_pivot_decision {
                 Some(me_decision) => {
                     // Included new registered or updated nodes as transactions.
-                    let staking_events = self.pow_handler.get_staking_events(
+                    match self.pow_handler.get_staking_events(
                         parent_decision.height,
                         me_decision.height,
                         parent_decision.block_hash,
                         me_decision.block_hash,
-                    )?;
-                    diem_debug!(
-                        "generate_proposal: staking_events={:?} parent={:?} me={:?}",
-                        staking_events, parent_block.block_info().pivot_decision(), payload.last()
-                    );
-                    for event in staking_events {
-                        match RawTransaction::from_staking_event(
-                            &event,
-                            self.author,
-                        ) {
-                            Ok(raw_tx) => {
-                                let signed_tx = raw_tx
-                                    .sign(&self.private_key)?
-                                    .into_inner();
-                                payload.push(signed_tx);
+                    ) {
+                        Ok(staking_events) => {
+                            diem_debug!(
+                                "generate_proposal: staking_events={:?} parent={:?} me={:?}",
+                                staking_events, parent_block.block_info().pivot_decision(), payload.last()
+                            );
+                            for event in staking_events {
+                                match RawTransaction::from_staking_event(
+                                    &event,
+                                    self.author,
+                                ) {
+                                    Ok(raw_tx) => {
+                                        let signed_tx = raw_tx
+                                            .sign(&self.private_key)?
+                                            .into_inner();
+                                        payload.push(signed_tx);
+                                    }
+                                    // TODO(lpl): This is not supposed to
+                                    // happen, so should we return error here?
+                                    Err(e) => diem_error!(
+                                        "Get invalid staking event: err={:?}",
+                                        e
+                                    ),
+                                }
                             }
-                            // TODO(lpl): This is not supposed to happen, so
-                            // should we return error here?
-                            Err(e) => diem_error!(
-                                "Get invalid staking event: err={:?}",
-                                e
-                            ),
+                        }
+                        Err(e) => {
+                            // Local PoW has not processed this decision yet
+                            // (e.g. still catching up). Propose without it
+                            // instead of failing the round; the mempool
+                            // retries it later.
+                            warn!(
+                                "generate_proposal: drop pivot decision {:?}: staking events unavailable: {:?}",
+                                me_decision, e
+                            );
+                            payload.retain(|tx| {
+                                !matches!(
+                                    tx.payload(),
+                                    TransactionPayload::PivotDecision(_)
+                                )
+                            });
                         }
                     }
                 }
