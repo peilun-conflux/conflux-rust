@@ -2,8 +2,8 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use primitives::account::AccountError;
-use std::{io, num};
+use primitives::{account::AccountError, EpochId, MerkleHash};
+use std::{io, num, path::PathBuf};
 use thiserror::Error;
 type DeltaMptId = u16;
 
@@ -126,6 +126,27 @@ pub enum Error {
     )]
     SemaphoreAcquireError,
 
+    #[error(
+        "isolated MPT parent gap: target {target_id:?}@{target_height}, expected parent {expected_parent_id:?}@{expected_parent_height}, latest {latest_id:?}@{latest_height}; enable recovery_latest_mpt_snapshot, restore a clean snapshot, or resync"
+    )]
+    IsolatedMptParentGap {
+        target_id: EpochId,
+        target_height: u64,
+        expected_parent_id: EpochId,
+        expected_parent_height: u64,
+        latest_id: EpochId,
+        latest_height: u64,
+    },
+
+    #[error(
+        "retained isolated MPT root mismatch: target {target:?}, expected {expected:?}, actual {actual:?}; enable recovery_latest_mpt_snapshot, restore a clean snapshot, or resync"
+    )]
+    IsolatedMptRootMismatch {
+        target: PathBuf,
+        expected: MerkleHash,
+        actual: MerkleHash,
+    },
+
     #[error("{0}")]
     Msg(String),
 }
@@ -137,4 +158,26 @@ impl From<String> for Error {
 }
 impl From<&str> for Error {
     fn from(e: &str) -> Self { Error::Msg(e.into()) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn isolated_mpt_parent_gap_guides_operator_recovery() {
+        let message = Error::IsolatedMptParentGap {
+            target_id: EpochId::from_low_u64_be(3),
+            target_height: 30,
+            expected_parent_id: EpochId::from_low_u64_be(2),
+            expected_parent_height: 20,
+            latest_id: EpochId::from_low_u64_be(1),
+            latest_height: 10,
+        }
+        .to_string();
+
+        assert!(message.contains("enable recovery_latest_mpt_snapshot"));
+        assert!(message.contains("restore a clean snapshot"));
+        assert!(message.contains("or resync"));
+    }
 }

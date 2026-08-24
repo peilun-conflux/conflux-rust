@@ -96,6 +96,22 @@ impl SnapshotKvDbSqlite {
     */
     /// Key-Value table. Key is unique key in this table.
     pub const SNAPSHOT_KV_TABLE_NAME: &'static str = "snapshot_key_value";
+
+    fn validate_expected_target_root(
+        &self, expected_target_root: Option<MerkleHash>,
+        actual_target_root: MerkleHash,
+    ) -> Result<()> {
+        if let Some(expected) = expected_target_root {
+            if expected != actual_target_root {
+                bail!(Error::IsolatedMptRootMismatch {
+                    target: self.path.clone(),
+                    expected,
+                    actual: actual_target_root,
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 impl KeyValueDbTypes for SnapshotKvDbSqlite {
@@ -342,6 +358,7 @@ impl SnapshotDbTrait for SnapshotKvDbSqlite {
         mpt_snapshot: &mut Option<SnapshotMptDbSqlite>,
         recover_mpt_with_kv_snapshot_exist: bool,
         in_reconstruct_snapshot_state: bool,
+        expected_target_root: Option<MerkleHash>,
     ) -> Result<MerkleHash> {
         debug!("direct_merge begins.");
 
@@ -354,6 +371,10 @@ impl SnapshotDbTrait for SnapshotKvDbSqlite {
             self.dumped_delta_kv_delete_keys_iterator()?;
 
         self.start_transaction()?;
+        let mpt_table_in_current_db = self.is_mpt_table_in_current_db();
+        if !mpt_table_in_current_db {
+            mpt_snapshot.as_mut().unwrap().start_transaction()?;
+        }
         // TODO: what about multi-threading node load?
         if let Some(old_db) = old_snapshot_db {
             let mut key_value_iter =
@@ -362,18 +383,15 @@ impl SnapshotDbTrait for SnapshotKvDbSqlite {
                 key_value_iter.iter_range(&[], None).unwrap().take();
 
             let new_mpt_snapshot = mpt_snapshot.as_mut().unwrap();
-            new_mpt_snapshot.start_transaction()?;
             while let Some((access_key, expected_value)) = kv_iter.next()? {
                 new_mpt_snapshot.put(&access_key, &expected_value)?;
             }
-            new_mpt_snapshot.commit_transaction()?;
         }
 
-        let mut mpt_to_modify = if self.is_mpt_table_in_current_db() {
+        let mut mpt_to_modify = if mpt_table_in_current_db {
             self.open_snapshot_mpt_owned()?
         } else {
             let mpt = mpt_snapshot.as_mut().unwrap();
-            mpt.start_transaction()?;
             mpt.open_snapshot_mpt_owned()?
         };
 
@@ -387,9 +405,13 @@ impl SnapshotDbTrait for SnapshotKvDbSqlite {
             set_keys_iter.iter_range(&[], None)?.take(),
             in_reconstruct_snapshot_state,
         )?;
+        self.validate_expected_target_root(
+            expected_target_root,
+            snapshot_root,
+        )?;
         self.commit_transaction()?;
 
-        if !self.is_mpt_table_in_current_db() {
+        if !mpt_table_in_current_db {
             mpt_snapshot.as_mut().unwrap().commit_transaction()?;
         }
 
@@ -400,6 +422,7 @@ impl SnapshotDbTrait for SnapshotKvDbSqlite {
         &mut self, old_snapshot_db: &Arc<SnapshotKvDbSqlite>,
         mpt_snapshot_db: &mut Option<SnapshotMptDbSqlite>,
         in_reconstruct_snapshot_state: bool,
+        expected_target_root: Option<MerkleHash>,
     ) -> Result<MerkleHash> {
         debug!("copy_and_merge begins.");
         let mut kv_iter = old_snapshot_db.snapshot_kv_iterator()?.take();
@@ -448,6 +471,10 @@ impl SnapshotDbTrait for SnapshotKvDbSqlite {
             delete_keys_iter.iter_range(&[], None)?.take(),
             set_keys_iter.iter_range(&[], None)?.take(),
             in_reconstruct_snapshot_state,
+        )?;
+        self.validate_expected_target_root(
+            expected_target_root,
+            snapshot_root,
         )?;
         self.commit_transaction()?;
 

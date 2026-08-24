@@ -137,6 +137,53 @@ pub struct StorageManager {
 
     pub persist_state_from_initialization:
         RwLock<Option<(Option<EpochId>, HashSet<EpochId>, u64, Option<u64>)>>,
+
+    #[cfg(test)]
+    snapshot_task_before_writer_test_hook:
+        RwLock<Option<SnapshotTaskBeforeWriterTestHook>>,
+}
+
+#[cfg(test)]
+type SnapshotTaskBeforeWriterTestHook =
+    Arc<dyn Fn(&EpochId) -> Result<()> + Send + Sync + 'static>;
+
+#[derive(Debug, Eq, PartialEq)]
+enum ExistingSnapshotBuildAction {
+    Skip,
+    Rebuild,
+    ParentGap,
+}
+
+fn snapshot_uses_shared_isolated_mpt(
+    storage_conf: &StorageConfiguration, snapshot_info: &SnapshotInfo,
+) -> bool {
+    storage_conf.use_isolated_db_for_mpt_table
+        && storage_conf.use_isolated_db_for_mpt_table_height.map_or(
+            true,
+            |height| {
+                snapshot_info.height >= height
+                    && snapshot_info.parent_snapshot_height >= height
+            },
+        )
+}
+
+fn classify_existing_snapshot_build(
+    latest: &(EpochId, u64), target_id: &EpochId, target: &SnapshotInfo,
+    parent_in_progress: bool,
+) -> ExistingSnapshotBuildAction {
+    let target_pair = (target_id.clone(), target.height);
+    let parent_pair = (
+        target.parent_snapshot_epoch_id.clone(),
+        target.parent_snapshot_height,
+    );
+
+    if target_pair == *latest || target.height < latest.1 {
+        ExistingSnapshotBuildAction::Skip
+    } else if parent_pair == *latest || parent_in_progress {
+        ExistingSnapshotBuildAction::Rebuild
+    } else {
+        ExistingSnapshotBuildAction::ParentGap
+    }
 }
 
 impl MallocSizeOf for StorageManager {
@@ -271,6 +318,8 @@ impl StorageManager {
             storage_conf,
             intermediate_trie_root_merkle: RwLock::new(None),
             persist_state_from_initialization: RwLock::new(None),
+            #[cfg(test)]
+            snapshot_task_before_writer_test_hook: RwLock::new(None),
         }));
 
         let storage_manager_arc =
@@ -402,6 +451,24 @@ impl StorageManager {
 
     pub fn get_snapshot_epoch_count(&self) -> u32 {
         self.storage_conf.consensus_param.snapshot_epoch_count
+    }
+
+    #[cfg(test)]
+    pub fn set_snapshot_task_before_writer_test_hook(
+        &self, hook: Option<SnapshotTaskBeforeWriterTestHook>,
+    ) {
+        *self.snapshot_task_before_writer_test_hook.write() = hook;
+    }
+
+    #[cfg(test)]
+    fn run_snapshot_task_before_writer_test_hook(
+        &self, snapshot_epoch_id: &EpochId,
+    ) -> Result<()> {
+        let hook = self.snapshot_task_before_writer_test_hook.read().clone();
+        match hook {
+            Some(hook) => hook(snapshot_epoch_id),
+            None => Ok(()),
+        }
     }
 
     pub fn get_snapshot_info_at_epoch(
@@ -548,99 +615,158 @@ impl StorageManager {
         let mut in_progress_snapshotting_tasks =
             this_cloned.in_progress_snapshotting_tasks.write();
 
+        if in_progress_snapshotting_tasks.contains_key(&snapshot_epoch_id) {
+            return Ok(());
+        }
+
+        let existing_snapshot_info = this
+            .snapshot_info_map_by_epoch
+            .read()
+            .get(&snapshot_epoch_id)
+            .cloned();
         let mut recover_mpt_with_kv_snapshot_exist = false;
-        if !in_progress_snapshotting_tasks.contains_key(&snapshot_epoch_id)
-            && this
-                .snapshot_info_map_by_epoch
-                .read()
-                .get(&snapshot_epoch_id)
-                .map_or(true, |info| {
-                    if info.snapshot_info_kept_to_provide_sync
-                        == SnapshotKeptToProvideSyncStatus::InfoOnly
-                    {
-                        true
-                    } else {
-                        recover_mpt_with_kv_snapshot_exist =
-                            recover_mpt_during_construct_pivot_state;
-                        recover_mpt_during_construct_pivot_state
+        let in_progress_snapshot_info = match existing_snapshot_info {
+            Some(info)
+                if info.snapshot_info_kept_to_provide_sync
+                    != SnapshotKeptToProvideSyncStatus::InfoOnly =>
+            {
+                if !recover_mpt_during_construct_pivot_state {
+                    if !snapshot_uses_shared_isolated_mpt(
+                        &this.storage_conf,
+                        &info,
+                    ) {
+                        return Ok(());
                     }
-                })
-        {
-            debug!(
+                    let latest = this
+                        .snapshot_manager
+                        .get_snapshot_db_manager()
+                        .latest_snapshot_id();
+                    let parent_in_progress = in_progress_snapshotting_tasks
+                        .contains_key(&info.parent_snapshot_epoch_id);
+                    match classify_existing_snapshot_build(
+                        &latest,
+                        &snapshot_epoch_id,
+                        &info,
+                        parent_in_progress,
+                    ) {
+                        ExistingSnapshotBuildAction::Skip => return Ok(()),
+                        ExistingSnapshotBuildAction::Rebuild => {}
+                        ExistingSnapshotBuildAction::ParentGap => {
+                            return Err(Error::IsolatedMptParentGap {
+                                target_id: snapshot_epoch_id,
+                                target_height: info.height,
+                                expected_parent_id: info
+                                    .parent_snapshot_epoch_id,
+                                expected_parent_height: info
+                                    .parent_snapshot_height,
+                                latest_id: latest.0,
+                                latest_height: latest.1,
+                            });
+                        }
+                    }
+                }
+                recover_mpt_with_kv_snapshot_exist = true;
+                info
+            }
+            _ => {
+                let mut pivot_chain_parts = vec![
+                    Default::default();
+                    this.storage_conf.consensus_param.snapshot_epoch_count
+                        as usize
+                ];
+                // Calculate pivot chain parts.
+                let mut epoch_id = snapshot_epoch_id.clone();
+                let mut delta_height =
+                    this.storage_conf.consensus_param.snapshot_epoch_count
+                        as usize
+                        - 1;
+                pivot_chain_parts[delta_height] = epoch_id.clone();
+                // TODO Handle the special cases better
+                let parent_snapshot_epoch_id = if maybe_delta_db.is_none() {
+                    // The case maybe_delta_db.is_none() means we are at height
+                    // 0. We set parent_snapshot of NULL to
+                    // NULL, so that in
+                    // register_new_snapshot we will move the initial
+                    // delta_mpt to intermediate_mpt for NULL_EPOCH
+                    //
+                    NULL_EPOCH
+                } else {
+                    let delta_db = maybe_delta_db.as_ref().unwrap();
+                    while delta_height > 0 {
+                        epoch_id =
+                            match delta_db.mpt.get_parent_epoch(&epoch_id)? {
+                                None => bail!(Error::DbValueError),
+                                Some(epoch_id) => epoch_id,
+                            };
+                        delta_height -= 1;
+                        pivot_chain_parts[delta_height] = epoch_id.clone();
+                        trace!(
+                            "check_make_register_snapshot_background: parent epoch_id={:?}",
+                            epoch_id
+                        );
+                    }
+                    if height
+                        == this
+                            .storage_conf
+                            .consensus_param
+                            .snapshot_epoch_count
+                            as u64
+                    {
+                        // We need the case height == SNAPSHOT_EPOCHS_CAPACITY
+                        // because the snapshot_info for genesis is
+                        // stored in NULL_EPOCH. If we do not use the special
+                        // case, it will be the epoch_id
+                        // of genesis.
+                        NULL_EPOCH
+                    } else {
+                        delta_db.mpt.get_parent_epoch(&epoch_id)?.unwrap()
+                    }
+                };
+
+                SnapshotInfo {
+                    snapshot_info_kept_to_provide_sync: Default::default(),
+                    serve_one_step_sync: true,
+                    height,
+                    parent_snapshot_height: height
+                        - this.storage_conf.consensus_param.snapshot_epoch_count
+                            as u64,
+                    // This is unknown for now, and we don't care.
+                    merkle_root: Default::default(),
+                    parent_snapshot_epoch_id,
+                    pivot_chain_parts,
+                }
+            }
+        };
+        let parent_in_progress_snapshot_task = in_progress_snapshotting_tasks
+            .get(&in_progress_snapshot_info.parent_snapshot_epoch_id)
+            .cloned();
+
+        debug!(
                 "start check_make_register_snapshot_background: epoch={:?} height={:?}",
                 snapshot_epoch_id, height
             );
 
-            let mut pivot_chain_parts = vec![
-                Default::default();
-                this.storage_conf.consensus_param.snapshot_epoch_count
-                    as usize
-            ];
-            // Calculate pivot chain parts.
-            let mut epoch_id = snapshot_epoch_id.clone();
-            let mut delta_height =
-                this.storage_conf.consensus_param.snapshot_epoch_count as usize
-                    - 1;
-            pivot_chain_parts[delta_height] = epoch_id.clone();
-            // TODO Handle the special cases better
-            let parent_snapshot_epoch_id = if maybe_delta_db.is_none() {
-                // The case maybe_delta_db.is_none() means we are at height 0.
-                // We set parent_snapshot of NULL to NULL, so that in
-                // register_new_snapshot we will move the initial
-                // delta_mpt to intermediate_mpt for NULL_EPOCH
-                //
-                NULL_EPOCH
-            } else {
-                let delta_db = maybe_delta_db.as_ref().unwrap();
-                while delta_height > 0 {
-                    epoch_id = match delta_db.mpt.get_parent_epoch(&epoch_id)? {
-                        None => bail!(Error::DbValueError),
-                        Some(epoch_id) => epoch_id,
-                    };
-                    delta_height -= 1;
-                    pivot_chain_parts[delta_height] = epoch_id.clone();
-                    trace!(
-                        "check_make_register_snapshot_background: parent epoch_id={:?}",
-                        epoch_id
-                    );
-                }
-                if height
-                    == this.storage_conf.consensus_param.snapshot_epoch_count
-                        as u64
-                {
-                    // We need the case height == SNAPSHOT_EPOCHS_CAPACITY
-                    // because the snapshot_info for genesis is
-                    // stored in NULL_EPOCH. If we do not use the special case,
-                    // it will be the epoch_id of genesis.
-                    NULL_EPOCH
-                } else {
-                    delta_db.mpt.get_parent_epoch(&epoch_id)?.unwrap()
-                }
-            };
-
-            let in_progress_snapshot_info = SnapshotInfo {
-                snapshot_info_kept_to_provide_sync: Default::default(),
-                serve_one_step_sync: true,
-                height: height as u64,
-                parent_snapshot_height: height
-                    - this.storage_conf.consensus_param.snapshot_epoch_count
-                        as u64,
-                // This is unknown for now, and we don't care.
-                merkle_root: Default::default(),
-                parent_snapshot_epoch_id,
-                pivot_chain_parts,
-            };
-
-            let parent_snapshot_epoch_id_cloned =
-                in_progress_snapshot_info.parent_snapshot_epoch_id.clone();
-            let mut in_progress_snapshot_info_cloned =
-                in_progress_snapshot_info.clone();
-            let task_finished_sender_cloned =
-                this.in_progress_snapshot_finish_signaler.clone();
-            let thread_handle = thread::Builder::new()
+        let parent_snapshot_epoch_id_cloned =
+            in_progress_snapshot_info.parent_snapshot_epoch_id.clone();
+        let mut in_progress_snapshot_info_cloned =
+            in_progress_snapshot_info.clone();
+        let task_finished_sender_cloned =
+            this.in_progress_snapshot_finish_signaler.clone();
+        let thread_handle = thread::Builder::new()
                 .name("Background Snapshotting".into()).spawn(move || {
                 // TODO: add support for cancellation and io throttling.
                 let f = || -> Result<()> {
+                    if let Some(parent_task) = parent_in_progress_snapshot_task {
+                        if let Some(parent_result) = parent_task.write().join() {
+                            parent_result?;
+                        }
+                    }
+
+                    #[cfg(test)]
+                    this.run_snapshot_task_before_writer_test_hook(
+                        &snapshot_epoch_id,
+                    )?;
+
                     let (mut snapshot_info_map_locked, new_snapshot_info) = match maybe_delta_db {
                         None => {
                             in_progress_snapshot_info_cloned.merkle_root = MERKLE_NULL_NODE;
@@ -666,8 +792,6 @@ impl StorageManager {
                         bail!(e);
                     }
 
-                    task_finished_sender_cloned.lock().send(Some(snapshot_epoch_id))
-                        .or(Err(Error::from(Error::MpscError)))?;
                     drop(snapshot_info_map_locked);
 
                     let debug_snapshot_checkers =
@@ -746,23 +870,28 @@ impl StorageManager {
                 };
 
                 let task_result = f();
-                if task_result.is_err() {
-                    warn!(
-                        "Failed to create snapshot for epoch_id {:?} with error {:?}",
-                        snapshot_epoch_id, task_result.as_ref().unwrap_err());
+                if let Err(error) = &task_result {
+                    error!(
+                        "failed to create snapshot for epoch {:?}: {}",
+                        snapshot_epoch_id, error,
+                    );
                 }
+
+                task_finished_sender_cloned
+                    .lock()
+                    .send(Some(snapshot_epoch_id))
+                    .map_err(|_| Error::MpscError)?;
 
                 task_result
             })?;
 
-            in_progress_snapshotting_tasks.insert(
-                snapshot_epoch_id,
-                Arc::new(RwLock::new(InProgressSnapshotTask {
-                    snapshot_info: in_progress_snapshot_info,
-                    thread_handle: Some(thread_handle),
-                })),
-            );
-        }
+        in_progress_snapshotting_tasks.insert(
+            snapshot_epoch_id,
+            Arc::new(RwLock::new(InProgressSnapshotTask {
+                snapshot_info: in_progress_snapshot_info,
+                thread_handle: Some(thread_handle),
+            })),
+        );
 
         Ok(())
     }
@@ -1564,6 +1693,117 @@ impl MaybeDeltaTrieDestroyErrors {
         } else {
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn epoch_id(value: u64) -> EpochId { EpochId::from_low_u64_be(value) }
+
+    fn snapshot_info(
+        height: u64, parent_snapshot_height: u64,
+        parent_snapshot_epoch_id: EpochId,
+    ) -> SnapshotInfo {
+        SnapshotInfo {
+            height,
+            parent_snapshot_height,
+            parent_snapshot_epoch_id,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn classify_existing_snapshot_build_uses_exact_parent_relation() {
+        let parent_id = epoch_id(10);
+        let target_id = epoch_id(20);
+        let old_target_id = epoch_id(15);
+        let target = snapshot_info(20, 10, parent_id.clone());
+        let old_target = snapshot_info(15, 5, epoch_id(5));
+
+        let cases = [
+            (
+                (target_id.clone(), 20),
+                &target_id,
+                &target,
+                false,
+                ExistingSnapshotBuildAction::Skip,
+            ),
+            (
+                (epoch_id(25), 25),
+                &old_target_id,
+                &old_target,
+                false,
+                ExistingSnapshotBuildAction::Skip,
+            ),
+            (
+                (parent_id.clone(), 10),
+                &target_id,
+                &target,
+                false,
+                ExistingSnapshotBuildAction::Rebuild,
+            ),
+            (
+                (epoch_id(5), 5),
+                &target_id,
+                &target,
+                true,
+                ExistingSnapshotBuildAction::Rebuild,
+            ),
+            (
+                (epoch_id(5), 5),
+                &target_id,
+                &target,
+                false,
+                ExistingSnapshotBuildAction::ParentGap,
+            ),
+            (
+                (epoch_id(21), 20),
+                &target_id,
+                &target,
+                false,
+                ExistingSnapshotBuildAction::ParentGap,
+            ),
+        ];
+
+        for (latest, target_id, target, parent_in_progress, expected) in cases {
+            assert_eq!(
+                classify_existing_snapshot_build(
+                    &latest,
+                    target_id,
+                    target,
+                    parent_in_progress,
+                ),
+                expected,
+            );
+        }
+    }
+
+    #[test]
+    fn isolated_parent_guard_requires_target_and_parent_to_share_mpt() {
+        let target = snapshot_info(20, 10, epoch_id(10));
+        let mut storage_conf = StorageConfiguration::new_default("", 10, 20);
+
+        assert!(!snapshot_uses_shared_isolated_mpt(&storage_conf, &target));
+
+        storage_conf.use_isolated_db_for_mpt_table = true;
+        assert!(snapshot_uses_shared_isolated_mpt(&storage_conf, &target));
+
+        storage_conf.use_isolated_db_for_mpt_table_height = Some(15);
+        assert!(!snapshot_uses_shared_isolated_mpt(&storage_conf, &target));
+
+        let isolated_parent_target = snapshot_info(20, 16, epoch_id(16));
+        assert!(snapshot_uses_shared_isolated_mpt(
+            &storage_conf,
+            &isolated_parent_target,
+        ));
+
+        let transition_parent_target = snapshot_info(20, 15, epoch_id(15));
+        assert!(snapshot_uses_shared_isolated_mpt(
+            &storage_conf,
+            &transition_parent_target,
+        ));
     }
 }
 

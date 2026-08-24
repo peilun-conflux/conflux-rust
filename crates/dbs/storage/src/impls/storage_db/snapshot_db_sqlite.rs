@@ -186,6 +186,7 @@ impl SnapshotDbTrait for SnapshotDbSqlite {
         _mpt_snapshot: &mut Option<SnapshotMptDbSqlite>,
         _recover_mpt_with_kv_snapshot_exist: bool,
         _in_reconstruct_snapshot_state: bool,
+        _expected_target_root: Option<MerkleHash>,
     ) -> Result<MerkleHash> {
         unreachable!()
     }
@@ -194,6 +195,7 @@ impl SnapshotDbTrait for SnapshotDbSqlite {
         &mut self, _old_snapshot_db: &Arc<SnapshotDbSqlite>,
         _mpt_snapshot_db: &mut Option<SnapshotMptDbSqlite>,
         _in_reconstruct_snapshot_state: bool,
+        _expected_target_root: Option<MerkleHash>,
     ) -> Result<MerkleHash> {
         unreachable!()
     }
