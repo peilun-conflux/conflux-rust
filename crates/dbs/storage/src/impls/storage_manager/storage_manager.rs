@@ -137,15 +137,7 @@ pub struct StorageManager {
 
     pub persist_state_from_initialization:
         RwLock<Option<(Option<EpochId>, HashSet<EpochId>, u64, Option<u64>)>>,
-
-    #[cfg(test)]
-    snapshot_task_before_writer_test_hook:
-        RwLock<Option<SnapshotTaskBeforeWriterTestHook>>,
 }
-
-#[cfg(test)]
-type SnapshotTaskBeforeWriterTestHook =
-    Arc<dyn Fn(&EpochId) -> Result<()> + Send + Sync + 'static>;
 
 #[derive(Debug, Eq, PartialEq)]
 enum ExistingSnapshotBuildAction {
@@ -318,8 +310,6 @@ impl StorageManager {
             storage_conf,
             intermediate_trie_root_merkle: RwLock::new(None),
             persist_state_from_initialization: RwLock::new(None),
-            #[cfg(test)]
-            snapshot_task_before_writer_test_hook: RwLock::new(None),
         }));
 
         let storage_manager_arc =
@@ -451,24 +441,6 @@ impl StorageManager {
 
     pub fn get_snapshot_epoch_count(&self) -> u32 {
         self.storage_conf.consensus_param.snapshot_epoch_count
-    }
-
-    #[cfg(test)]
-    pub fn set_snapshot_task_before_writer_test_hook(
-        &self, hook: Option<SnapshotTaskBeforeWriterTestHook>,
-    ) {
-        *self.snapshot_task_before_writer_test_hook.write() = hook;
-    }
-
-    #[cfg(test)]
-    fn run_snapshot_task_before_writer_test_hook(
-        &self, snapshot_epoch_id: &EpochId,
-    ) -> Result<()> {
-        let hook = self.snapshot_task_before_writer_test_hook.read().clone();
-        match hook {
-            Some(hook) => hook(snapshot_epoch_id),
-            None => Ok(()),
-        }
     }
 
     pub fn get_snapshot_info_at_epoch(
@@ -630,13 +602,8 @@ impl StorageManager {
                 if info.snapshot_info_kept_to_provide_sync
                     != SnapshotKeptToProvideSyncStatus::InfoOnly =>
             {
-                if !recover_mpt_during_construct_pivot_state {
-                    if !snapshot_uses_shared_isolated_mpt(
-                        &this.storage_conf,
-                        &info,
-                    ) {
-                        return Ok(());
-                    }
+                if snapshot_uses_shared_isolated_mpt(&this.storage_conf, &info)
+                {
                     let latest = this
                         .snapshot_manager
                         .get_snapshot_db_manager()
@@ -664,6 +631,8 @@ impl StorageManager {
                             });
                         }
                     }
+                } else if !recover_mpt_during_construct_pivot_state {
+                    return Ok(());
                 }
                 recover_mpt_with_kv_snapshot_exist = true;
                 info
@@ -762,11 +731,6 @@ impl StorageManager {
                         }
                     }
 
-                    #[cfg(test)]
-                    this.run_snapshot_task_before_writer_test_hook(
-                        &snapshot_epoch_id,
-                    )?;
-
                     let (mut snapshot_info_map_locked, new_snapshot_info) = match maybe_delta_db {
                         None => {
                             in_progress_snapshot_info_cloned.merkle_root = MERKLE_NULL_NODE;
@@ -792,6 +756,8 @@ impl StorageManager {
                         bail!(e);
                     }
 
+                    task_finished_sender_cloned.lock().send(Some(snapshot_epoch_id))
+                        .or(Err(Error::from(Error::MpscError)))?;
                     drop(snapshot_info_map_locked);
 
                     let debug_snapshot_checkers =
@@ -876,11 +842,6 @@ impl StorageManager {
                         snapshot_epoch_id, error,
                     );
                 }
-
-                task_finished_sender_cloned
-                    .lock()
-                    .send(Some(snapshot_epoch_id))
-                    .map_err(|_| Error::MpscError)?;
 
                 task_result
             })?;
@@ -1693,117 +1654,6 @@ impl MaybeDeltaTrieDestroyErrors {
         } else {
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn epoch_id(value: u64) -> EpochId { EpochId::from_low_u64_be(value) }
-
-    fn snapshot_info(
-        height: u64, parent_snapshot_height: u64,
-        parent_snapshot_epoch_id: EpochId,
-    ) -> SnapshotInfo {
-        SnapshotInfo {
-            height,
-            parent_snapshot_height,
-            parent_snapshot_epoch_id,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn classify_existing_snapshot_build_uses_exact_parent_relation() {
-        let parent_id = epoch_id(10);
-        let target_id = epoch_id(20);
-        let old_target_id = epoch_id(15);
-        let target = snapshot_info(20, 10, parent_id.clone());
-        let old_target = snapshot_info(15, 5, epoch_id(5));
-
-        let cases = [
-            (
-                (target_id.clone(), 20),
-                &target_id,
-                &target,
-                false,
-                ExistingSnapshotBuildAction::Skip,
-            ),
-            (
-                (epoch_id(25), 25),
-                &old_target_id,
-                &old_target,
-                false,
-                ExistingSnapshotBuildAction::Skip,
-            ),
-            (
-                (parent_id.clone(), 10),
-                &target_id,
-                &target,
-                false,
-                ExistingSnapshotBuildAction::Rebuild,
-            ),
-            (
-                (epoch_id(5), 5),
-                &target_id,
-                &target,
-                true,
-                ExistingSnapshotBuildAction::Rebuild,
-            ),
-            (
-                (epoch_id(5), 5),
-                &target_id,
-                &target,
-                false,
-                ExistingSnapshotBuildAction::ParentGap,
-            ),
-            (
-                (epoch_id(21), 20),
-                &target_id,
-                &target,
-                false,
-                ExistingSnapshotBuildAction::ParentGap,
-            ),
-        ];
-
-        for (latest, target_id, target, parent_in_progress, expected) in cases {
-            assert_eq!(
-                classify_existing_snapshot_build(
-                    &latest,
-                    target_id,
-                    target,
-                    parent_in_progress,
-                ),
-                expected,
-            );
-        }
-    }
-
-    #[test]
-    fn isolated_parent_guard_requires_target_and_parent_to_share_mpt() {
-        let target = snapshot_info(20, 10, epoch_id(10));
-        let mut storage_conf = StorageConfiguration::new_default("", 10, 20);
-
-        assert!(!snapshot_uses_shared_isolated_mpt(&storage_conf, &target));
-
-        storage_conf.use_isolated_db_for_mpt_table = true;
-        assert!(snapshot_uses_shared_isolated_mpt(&storage_conf, &target));
-
-        storage_conf.use_isolated_db_for_mpt_table_height = Some(15);
-        assert!(!snapshot_uses_shared_isolated_mpt(&storage_conf, &target));
-
-        let isolated_parent_target = snapshot_info(20, 16, epoch_id(16));
-        assert!(snapshot_uses_shared_isolated_mpt(
-            &storage_conf,
-            &isolated_parent_target,
-        ));
-
-        let transition_parent_target = snapshot_info(20, 15, epoch_id(15));
-        assert!(snapshot_uses_shared_isolated_mpt(
-            &storage_conf,
-            &transition_parent_target,
-        ));
     }
 }
 

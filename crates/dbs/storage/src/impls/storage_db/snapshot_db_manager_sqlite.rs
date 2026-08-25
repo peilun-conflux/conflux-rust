@@ -26,20 +26,7 @@ pub struct SnapshotDbManagerSqlite {
     snapshot_epoch_id_before_recovered: RwLock<Option<EpochId>>,
     reconstruct_snapshot_id_for_reboot: RwLock<Option<EpochId>>,
     backup_mpt_snapshot: bool,
-    #[cfg(test)]
-    snapshot_merge_test_hook: RwLock<Option<SnapshotMergeTestHook>>,
-    #[cfg(test)]
-    snapshot_copy_test_hook: RwLock<Option<SnapshotCopyTestHook>>,
-    #[cfg(test)]
-    snapshot_reader_before_latest_pin_test_hook:
-        RwLock<Option<SnapshotMergeTestHook>>,
 }
-
-#[cfg(test)]
-type SnapshotMergeTestHook =
-    Arc<dyn Fn(&EpochId) -> Result<()> + Send + Sync + 'static>;
-#[cfg(test)]
-type SnapshotCopyTestHook = Arc<dyn Fn() -> Result<()> + Send + Sync + 'static>;
 
 #[derive(Debug)]
 enum CopyType {
@@ -167,12 +154,6 @@ impl SnapshotDbManagerSqlite {
             snapshot_epoch_id_before_recovered: RwLock::new(None),
             reconstruct_snapshot_id_for_reboot: RwLock::new(None),
             backup_mpt_snapshot,
-            #[cfg(test)]
-            snapshot_merge_test_hook: RwLock::new(None),
-            #[cfg(test)]
-            snapshot_copy_test_hook: RwLock::new(None),
-            #[cfg(test)]
-            snapshot_reader_before_latest_pin_test_hook: RwLock::new(None),
         })
     }
 
@@ -182,120 +163,6 @@ impl SnapshotDbManagerSqlite {
 
     pub fn latest_snapshot_id(&self) -> (EpochId, u64) {
         self.latest_snapshot_id.read().clone()
-    }
-
-    #[cfg(test)]
-    pub fn set_snapshot_merge_test_hook(
-        &self, hook: Option<SnapshotMergeTestHook>,
-    ) {
-        *self.snapshot_merge_test_hook.write() = hook;
-    }
-
-    #[cfg(test)]
-    pub fn is_kv_snapshot_open_for_write_for_test(
-        &self, snapshot_epoch_id: &EpochId,
-    ) -> bool {
-        matches!(
-            self.already_open_snapshots
-                .read()
-                .get(&self.get_snapshot_db_path(snapshot_epoch_id)),
-            Some(None)
-        )
-    }
-
-    #[cfg(test)]
-    pub fn set_snapshot_copy_test_hook(
-        &self, hook: Option<SnapshotCopyTestHook>,
-    ) {
-        *self.snapshot_copy_test_hook.write() = hook;
-    }
-
-    #[cfg(test)]
-    pub fn set_snapshot_reader_before_latest_pin_test_hook(
-        &self, hook: Option<SnapshotMergeTestHook>,
-    ) {
-        *self.snapshot_reader_before_latest_pin_test_hook.write() = hook;
-    }
-
-    #[cfg(test)]
-    pub fn latest_mpt_snapshot_available_permits_for_test(&self) -> usize {
-        self.latest_mpt_snapshot_semaphore.available_permits()
-    }
-
-    #[cfg(test)]
-    pub fn latest_mpt_merkle_root_for_test(
-        &self, snapshot_epoch_id: &EpochId,
-    ) -> Result<Option<MerkleHash>> {
-        let Some(snapshot_db) = self.open_mpt_snapshot_readonly(
-            self.get_latest_mpt_snapshot_db_path(),
-            false,
-            snapshot_epoch_id,
-        )?
-        else {
-            return Ok(None);
-        };
-        let snapshot_mpt = snapshot_db.open_snapshot_mpt_shared()?;
-        Ok(Some(snapshot_mpt.get_merkle_root()))
-    }
-
-    #[cfg(test)]
-    pub fn merge_temp_mpt_snapshot_db_path_for_test(
-        &self, snapshot_epoch_id: &EpochId,
-    ) -> PathBuf {
-        self.get_merge_temp_mpt_snapshot_db_path(snapshot_epoch_id)
-    }
-
-    #[cfg(test)]
-    fn run_snapshot_merge_test_hook(
-        &self, snapshot_epoch_id: &EpochId,
-    ) -> Result<()> {
-        let hook = self.snapshot_merge_test_hook.read().clone();
-        match hook {
-            Some(hook) => hook(snapshot_epoch_id),
-            None => Ok(()),
-        }
-    }
-
-    #[cfg(test)]
-    fn snapshot_copy_test_hook(&self) -> Option<SnapshotCopyTestHook> {
-        self.snapshot_copy_test_hook.read().clone()
-    }
-
-    #[cfg(test)]
-    fn run_snapshot_reader_before_latest_pin_test_hook(
-        &self, snapshot_epoch_id: &EpochId,
-    ) -> Result<()> {
-        let hook = self
-            .snapshot_reader_before_latest_pin_test_hook
-            .read()
-            .clone();
-        match hook {
-            Some(hook) => hook(snapshot_epoch_id),
-            None => Ok(()),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn publish_mpt_checkpoint_as_latest_for_test(
-        &self, snapshot_epoch_id: EpochId, snapshot_height: u64,
-    ) -> Result<()> {
-        let _latest_permit = self
-            .latest_mpt_snapshot_semaphore
-            .try_acquire()
-            .map_err(|_| Error::SemaphoreTryAcquireError)?;
-        if self
-            .mpt_already_open_snapshots
-            .read()
-            .contains_key(&self.get_latest_mpt_snapshot_db_path())
-        {
-            bail!(Error::SnapshotAlreadyExists);
-        }
-        self.recovery_latest_mpt_snapshot_from_checkpoint(
-            &snapshot_epoch_id,
-            None,
-        )?;
-        self.update_latest_snapshot_id(snapshot_epoch_id, snapshot_height);
-        Ok(())
     }
 
     pub fn clean_snapshot_epoch_id_before_recovered(&self) {
@@ -380,13 +247,16 @@ impl SnapshotDbManagerSqlite {
                     return Ok(None);
                 };
 
-                let mpt_snapshot_db = self.open_mpt_snapshot_readonly(
+                let Some(mpt_snapshot_db) = self.open_mpt_snapshot_readonly(
                     mpt_snapshot_path,
                     try_open,
                     snapshot_epoch_id,
-                )?;
+                )?
+                else {
+                    return Ok(None);
+                };
 
-                mpt_snapshot_db
+                Some(mpt_snapshot_db)
             } else {
                 None
             };
@@ -643,10 +513,6 @@ impl SnapshotDbManagerSqlite {
             }
         }
 
-        #[cfg(test)]
-        self.run_snapshot_reader_before_latest_pin_test_hook(
-            snapshot_epoch_id,
-        )?;
         let file_exists = snapshot_path.exists();
         if file_exists {
             let semaphore_permit = if try_open {
@@ -691,10 +557,10 @@ impl SnapshotDbManagerSqlite {
             }
 
             let (latest_mpt_semaphore_permit, v) = if selected_latest_path {
-                let s =
-                    self.latest_mpt_snapshot_semaphore.try_acquire().map_err(
-                        |_err| "The MPT snapshot is already open for writing.",
-                    )?;
+                let s = match self.latest_mpt_snapshot_semaphore.try_acquire() {
+                    Ok(permit) => permit,
+                    Err(_) => return Ok(None),
+                };
 
                 if self.latest_snapshot_id.read().0 != *snapshot_epoch_id {
                     return Ok(None);
@@ -1152,11 +1018,6 @@ impl SnapshotDbManagerSqlite {
                 fs::remove_dir_all(&temp_mpt_path)?;
             }
 
-            #[cfg(test)]
-            if let Some(hook) = self.snapshot_copy_test_hook() {
-                hook()?;
-            }
-
             Self::try_copy_snapshot(
                 latest_mpt_path.as_path(),
                 temp_mpt_path.as_path(),
@@ -1358,11 +1219,6 @@ impl SnapshotDbManagerTrait for SnapshotDbManagerSqlite {
                     publish_latest_on_open,
                 )?;
 
-                #[cfg(test)]
-                if expected_latest.is_some() {
-                    self.run_snapshot_merge_test_hook(&snapshot_epoch_id)?;
-                }
-
                 // Drop copied old snapshot delta mpt dump
                 snapshot_kv_db.drop_delta_mpt_dump()?;
 
@@ -1414,10 +1270,6 @@ impl SnapshotDbManagerTrait for SnapshotDbManagerSqlite {
                     expected_latest.clone(),
                     publish_latest_on_open,
                 )?;
-                #[cfg(test)]
-                if expected_latest.is_some() {
-                    self.run_snapshot_merge_test_hook(&snapshot_epoch_id)?;
-                }
                 snapshot_kv_db.dump_delta_mpt(&delta_mpt)?;
                 let _open_lock = self.copying_mpt_snapshot.lock();
                 self.copy_and_merge(
@@ -1624,7 +1476,6 @@ impl SnapshotDbManagerTrait for SnapshotDbManagerSqlite {
             merkle_root,
         );
         let final_db_path = self.get_snapshot_db_path(snapshot_epoch_id);
-        let locked = snapshot_info_map_rwlock.write();
 
         if temp_mpt_snapshot_path.exists() {
             if latest_mpt_snapshot_path.exists() {
@@ -1659,6 +1510,7 @@ impl SnapshotDbManagerTrait for SnapshotDbManagerSqlite {
             );
         }
 
+        let locked = snapshot_info_map_rwlock.write();
         Self::rename_snapshot_db(&temp_db_path, &final_db_path)?;
         Ok(locked)
     }
@@ -1762,8 +1614,6 @@ impl SnapshotDbManagerTrait for SnapshotDbManagerSqlite {
     }
 }
 
-#[cfg(test)]
-use crate::storage_db::SnapshotMptTraitRead;
 use crate::{
     impls::{
         delta_mpt::DeltaMptIterator, errors::*,

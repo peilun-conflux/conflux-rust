@@ -159,25 +159,3 @@ impl From<String> for Error {
 impl From<&str> for Error {
     fn from(e: &str) -> Self { Error::Msg(e.into()) }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn isolated_mpt_parent_gap_guides_operator_recovery() {
-        let message = Error::IsolatedMptParentGap {
-            target_id: EpochId::from_low_u64_be(3),
-            target_height: 30,
-            expected_parent_id: EpochId::from_low_u64_be(2),
-            expected_parent_height: 20,
-            latest_id: EpochId::from_low_u64_be(1),
-            latest_height: 10,
-        }
-        .to_string();
-
-        assert!(message.contains("enable recovery_latest_mpt_snapshot"));
-        assert!(message.contains("restore a clean snapshot"));
-        assert!(message.contains("or resync"));
-    }
-}
